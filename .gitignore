@@ -1,0 +1,13 @@
+# ClawSurf profile data
+clawsurf-profile/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

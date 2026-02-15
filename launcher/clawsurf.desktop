@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=ClawSurf
+GenericName=Web Browser
+Comment=Dedicated Chromium-based browser for OpenClaw automation
+Exec=$HOME/.local/bin/ClawSurf-launch %U
+Icon=clawsurf
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=false
+StartupWMClass=ClawSurf
+Keywords=openclaw;automation;relay;browser;
