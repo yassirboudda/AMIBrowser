@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DevTools MCP Logger - Journal</title>
+  <link rel="stylesheet" href="journal.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📋 Log Journal</h1>
+      <div class="header-controls">
+        <select id="filter-category" class="filter-select">
+          <option value="all">All Categories</option>
+          <option value="error">Errors</option>
+          <option value="network">Network</option>
+          <option value="console">Console</option>
+          <option value="dom">DOM</option>
+          <option value="performance">Performance</option>
+          <option value="source">Sources</option>
+        </select>
+        <input type="text" id="search-input" class="search-input" placeholder="Search logs...">
+        <button id="copy-btn" class="btn btn-copy" title="Copy all visible logs to clipboard">
+          📋 Copy All
+        </button>
+        <button id="copy-json-btn" class="btn btn-copy-json" title="Copy as JSON">
+          { } Copy JSON
+        </button>
+        <button id="clear-btn" class="btn btn-clear" title="Clear journal display">
+          🗑 Clear
+        </button>
+      </div>
+    </div>
+
+    <div id="status-bar" class="status-bar">
+      <span id="status-text">Connecting...</span>
+      <span id="entry-count">0 entries</span>
+    </div>
+
+    <div id="journal-entries" class="journal-entries">
+      <div class="empty-state">
+        <p>No log entries yet.</p>
+        <p>Activate the extension on a page to start recording.</p>
+      </div>
+    </div>
+
+    <div id="copy-toast" class="toast hidden">Copied to clipboard!</div>
+  </div>
+
+  <script src="journal.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "chrome-devtools-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server that receives Chrome DevTools debugging data from a Chromium extension and exposes it to GitHub Copilot",
+  "type": "module",
+  "main": "server.js",
+  "bin": {
+    "chrome-devtools-mcp-server": "./server.js"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "license": "MIT"
+}
