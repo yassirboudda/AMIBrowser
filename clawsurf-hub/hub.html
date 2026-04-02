@@ -5,9 +5,17 @@
   <title>AMI Browser</title>
   <link rel="stylesheet" href="hub.css">
   <style>
-    /* Override Chrome NTP attribution bar that appears below the extension content */
+    /* Override Chrome NTP attribution bar and Customize Chromium button */
     #ntp-contents, #attribution, .ntp-bottom, [class*="customize"],
-    #customize-dialog, #one-google-bar, ntp-app { display: none !important; }
+    #customize-dialog, #one-google-bar, ntp-app,
+    .customize-buttons, .ntp-sb-container, [id*="customize"],
+    a[href*="customize"], button[title*="Chromium"], button[title*="Chrome"],
+    .ntp-realbox, #realbox-container, .cr-button[data-action="customize"],
+    .customize-button, .sb-body, .ntp-untrusted,
+    [aria-label*="Customize Chromium"], [aria-label*="Customise Chromium"],
+    iframe[src*="chrome-untrusted://"] { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
+    /* Ensure our hub fills the full viewport */
+    html, body { overflow-x: hidden; min-height: 100vh; }
   </style>
 </head>
 <body>
@@ -357,20 +365,40 @@
   <script>
     // Attempt to hide Chrome's native NTP attribution footer
     (function hideNtpFooter() {
-      const selectors = ['#ntp-contents', '#attribution', '.ntp-bottom', 
-        '#one-google-bar', 'ntp-app', '#most-visited'];
+      const selectors = ['#ntp-contents', '#attribution', '.ntp-bottom',
+        '#one-google-bar', 'ntp-app', '#most-visited', '.customize-buttons',
+        '[id*="customize"]', 'button[title*="Chromium"]', 'button[title*="Chrome"]',
+        '.customize-button', '[aria-label*="Customize"]', '.ntp-realbox',
+        '#realbox-container', 'iframe[src*="chrome-untrusted"]'];
       function hide() {
         selectors.forEach(s => {
-          document.querySelectorAll(s).forEach(el => { el.style.display = 'none'; });
+          document.querySelectorAll(s).forEach(el => {
+            el.style.display = 'none';
+            el.style.visibility = 'hidden';
+          });
         });
-        // Also hide any iframes Chrome injects
-        document.querySelectorAll('iframe[src*="chrome"]').forEach(f => { f.style.display = 'none'; });
+        // Hide any iframes Chrome injects
+        document.querySelectorAll('iframe').forEach(f => {
+          const src = f.src || '';
+          if (src.includes('chrome') || src.includes('ntp') || !src) {
+            f.style.display = 'none';
+          }
+        });
+        // Rewrite any remaining "Chromium" text in the page
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          if (node.nodeValue && /Chromium/i.test(node.nodeValue)) {
+            node.nodeValue = node.nodeValue.replace(/Chromium/gi, 'AMI Browser');
+          }
+        }
       }
       hide();
       // Re-run after Chrome finishes injecting its elements
-      setTimeout(hide, 100);
-      setTimeout(hide, 500);
-      setTimeout(hide, 1500);
+      [100, 300, 600, 1000, 2000, 4000].forEach(ms => setTimeout(hide, ms));
+      // Also observe for late additions
+      const obs = new MutationObserver(hide);
+      obs.observe(document.body, { childList: true, subtree: true });
     })();
   </script>
 </body>

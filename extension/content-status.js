@@ -10,17 +10,28 @@
 
   // ── Body text rewriter: replace visible "Chromium" in page content ──
   function rewriteBodyText() {
-    // Only run on internal pages (chrome-extension://, about:, chrome://) and settings-like pages
+    // Run on internal pages AND any page that might show "Chromium" text
     const loc = window.location.href
-    if (!loc.startsWith('chrome-extension://') && !loc.startsWith('about:') && !loc.includes('settings')) return
+    const isInternal = loc.startsWith('chrome-extension://') || loc.startsWith('about:') || 
+                       loc.includes('settings') || loc.startsWith('chrome://') || loc.startsWith('chrome-search://')
+    
+    if (!document.body) return
 
-    const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT, null)
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null)
     let node
     while ((node = walker.nextNode())) {
       if (node.nodeValue && node.nodeValue.includes('Chromium')) {
         node.nodeValue = node.nodeValue.replace(/Chromium/g, 'AMI Browser')
       }
     }
+
+    // Also target button text, aria-labels, title attributes
+    document.querySelectorAll('[title*="Chromium"], [aria-label*="Chromium"]').forEach(el => {
+      if (el.title) el.title = el.title.replace(/Chromium/g, 'AMI Browser')
+      if (el.getAttribute('aria-label')) {
+        el.setAttribute('aria-label', el.getAttribute('aria-label').replace(/Chromium/g, 'AMI Browser'))
+      }
+    })
   }
 
   // Run once immediately and observe future changes

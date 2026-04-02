@@ -48,17 +48,25 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 /* ── Catch new-tab creation and redirect to hub (in case chrome_url_overrides fails) ── */
+const NTP_URLS = new Set([
+  'chrome://newtab/', 'chrome://newtab', 'chrome://new-tab-page/',
+  'chrome://new-tab-page', 'chrome-search://local-ntp/local-ntp.html',
+  'about:blank', ''
+]);
+function isNTP(url) {
+  return NTP_URLS.has(url) || (url && (url.startsWith('chrome-search://') || url.startsWith('chrome://newtab')));
+}
+
 chrome.tabs.onCreated.addListener(tab => {
   const url = tab.url || tab.pendingUrl || '';
-  if (url === 'chrome://newtab/' || url === 'chrome://newtab' || url === '' || url === 'about:blank') {
-    const hubUrl = chrome.runtime.getURL('hub.html');
-    chrome.tabs.update(tab.id, { url: hubUrl });
+  if (isNTP(url)) {
+    chrome.tabs.update(tab.id, { url: chrome.runtime.getURL('hub.html') });
   }
 });
 
 /* ── Also catch tab updates to NTP ── */
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.url === 'chrome://newtab/' || changeInfo.url === 'chrome://newtab') {
+  if (changeInfo.url && isNTP(changeInfo.url)) {
     chrome.tabs.update(tabId, { url: chrome.runtime.getURL('hub.html') });
   }
 });
@@ -79,10 +87,7 @@ function sanitizeStartupTabs() {
         // Tabs that should be replaced with hub
         const junkTabs = tabs.filter(tab => {
           const url = tab.url || tab.pendingUrl || '';
-          return url === 'chrome://newtab/' ||
-                 url === 'chrome://newtab' ||
-                 url === 'about:blank' ||
-                 url === '' ||
+          return isNTP(url) ||
                  url.startsWith('chrome-search://') ||
                  (url.startsWith('chrome-extension://') && url.includes('/options.html')) ||
                  (url.startsWith('chrome-extension://') && url.endsWith('/hub.html') && url !== hubUrl);
