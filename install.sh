@@ -141,8 +141,9 @@ echo "  → Installing desktop entry"
 mkdir -p "$APP_DIR"
 sed "s|\\\$HOME|$HOME|g" "$REPO_DIR/launcher/clawsurf.desktop" > "$APP_DIR/ami-browser.desktop"
 
-# Backward compatibility desktop alias
-cp "$APP_DIR/ami-browser.desktop" "$APP_DIR/clawsurf.desktop"
+# Clean up legacy desktop entries
+rm -f "$APP_DIR/clawsurf.desktop" "$APP_DIR/clawsurf-dev.desktop" \
+      "$APP_DIR/clawsurf2.desktop" "$APP_DIR/ami-browser-dev.desktop"
 
 # 13. Update desktop database (optional)
 if command -v update-desktop-database &>/dev/null; then
