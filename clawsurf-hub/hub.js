@@ -35,9 +35,9 @@ const DEFAULT_SHORTCUTS = [
   { label: 'Reddit',         url: 'https://reddit.com',          icon: 'https://cdn.simpleicons.org/reddit/FF4500',       bg: '#fdba74' },
   { label: 'X / Twitter',    url: 'https://x.com',               icon: 'https://cdn.simpleicons.org/x',                   bg: '#e2e8f0' },
   { label: 'Spotify',        url: 'https://open.spotify.com',    icon: 'https://cdn.simpleicons.org/spotify/1DB954',      bg: '#86efac' },
-  { label: 'LinkedIn',       url: 'https://linkedin.com',        icon: 'https://cdn.simpleicons.org/linkedin/0A66C2',     bg: '#93c5fd' },
+  { label: 'LinkedIn',       url: 'https://linkedin.com',        icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230A66C2'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='36' fill='white'%3Ein%3C/text%3E%3C/svg%3E",     bg: '#93c5fd' },
   { label: 'Wikipedia',      url: 'https://wikipedia.org',       icon: 'https://cdn.simpleicons.org/wikipedia',           bg: '#a5f3fc' },
-  { label: 'Amazon',         url: 'https://amazon.com',          icon: 'https://cdn.simpleicons.org/amazon/FF9900',       bg: '#fcd34d' },
+  { label: 'Amazon',         url: 'https://amazon.com',          icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23FF9900'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='42' fill='white'%3Ea%3C/text%3E%3C/svg%3E",       bg: '#fcd34d' },
 ];
 
 /* ══════════════════════════════════════
@@ -142,16 +142,16 @@ const SLIDER_INTEGRATIONS = [
   { label: 'Telegram',      logo: 'https://cdn.simpleicons.org/telegram/26A5E4' },
   { label: 'Discord',       logo: 'https://cdn.simpleicons.org/discord/5865F2' },
   { label: 'WhatsApp',      logo: 'https://cdn.simpleicons.org/whatsapp/25D366' },
-  { label: 'Slack',         logo: 'https://cdn.simpleicons.org/slack' },
+  { label: 'Slack',         logo: 'https://cdn.simpleicons.org/slack/4A154B' },
   { label: 'Signal',        logo: 'https://cdn.simpleicons.org/signal/3A76F0' },
-  { label: 'Microsoft Teams', logo: 'https://cdn.simpleicons.org/microsoftteams/6264A7' },
+  { label: 'Microsoft Teams', logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%236264A7'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='42' fill='white'%3ET%3C/text%3E%3C/svg%3E" },
   { label: 'Stripe',        logo: 'https://cdn.simpleicons.org/stripe/635BFF' },
   { label: 'PayPal',        logo: 'https://cdn.simpleicons.org/paypal/003087' },
   { label: 'GitHub',        logo: 'https://cdn.simpleicons.org/github' },
   { label: 'GitLab',        logo: 'https://cdn.simpleicons.org/gitlab/FC6D26' },
   { label: 'Vercel',        logo: 'https://cdn.simpleicons.org/vercel' },
   { label: 'Cloudflare',    logo: 'https://cdn.simpleicons.org/cloudflare/F38020' },
-  { label: 'AWS',           logo: 'https://cdn.simpleicons.org/amazonaws/FF9900' },
+  { label: 'AWS',           logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23FF9900'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='30' fill='white'%3EAWS%3C/text%3E%3C/svg%3E" },
   { label: 'Docker',        logo: 'https://cdn.simpleicons.org/docker/2496ED' },
   { label: 'Salesforce',    logo: 'https://cdn.simpleicons.org/salesforce/00A1E0' },
   { label: 'HubSpot',       logo: 'https://cdn.simpleicons.org/hubspot/FF7A59' },
@@ -161,9 +161,9 @@ const SLIDER_INTEGRATIONS = [
   { label: 'MongoDB',       logo: 'https://cdn.simpleicons.org/mongodb/47A248' },
   { label: 'Supabase',      logo: 'https://cdn.simpleicons.org/supabase/3FCF8E' },
   { label: 'Firebase',      logo: 'https://cdn.simpleicons.org/firebase/FFCA28' },
-  { label: 'CoinGecko',     logo: 'https://cdn.simpleicons.org/coingecko/8BC53F' },
+  { label: 'CoinGecko',     logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%238BC53F'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='36' fill='white'%3ECG%3C/text%3E%3C/svg%3E" },
   { label: 'Ethereum',      logo: 'https://cdn.simpleicons.org/ethereum/3C3C3D' },
-  { label: 'Twilio',        logo: 'https://cdn.simpleicons.org/twilio/F22F46' },
+  { label: 'Twilio',        logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F22F46'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='42' fill='white'%3ET%3C/text%3E%3C/svg%3E" },
   { label: 'Sentry',        logo: 'https://cdn.simpleicons.org/sentry/362D59' },
   { label: 'Datadog',       logo: 'https://cdn.simpleicons.org/datadog/632CA6' },
   { label: 'Grafana',       logo: 'https://cdn.simpleicons.org/grafana/F46800' },
@@ -267,9 +267,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   const toolSettings = document.getElementById('tool-link-settings');
   if (toolSettings) toolSettings.addEventListener('click', e => { e.preventDefault(); document.getElementById('btn-settings')?.click(); });
 
-  // Scroll chat column into view (don't steal focus — keeps omnibox prompt)
+  // Clean the extension URL from the address bar
+  history.replaceState({}, document.title, '/');
+
+  // Scroll chat column into view, then focus the hub search input
+  // so the omnibox loses focus and appears empty
   requestAnimationFrame(() => {
     document.getElementById('col-chat')?.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'start' });
+    setTimeout(() => document.getElementById('search-input')?.focus(), 120);
   });
 });
 
