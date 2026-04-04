@@ -96,9 +96,21 @@ start_title_override() {
 
 start_title_override
 
+# ── Start the gateway (Node.js backend for AI chat, connections, automation) ──
+GATEWAY_PID=""
+GATEWAY_JS="$EXT_HUB/gateway.js"
+if [[ -f "$GATEWAY_JS" ]] && command -v node >/dev/null 2>&1; then
+  setsid node "$GATEWAY_JS" >/tmp/ami-browser-gateway.log 2>&1 &
+  GATEWAY_PID=$!
+  echo "[AMI Browser] Gateway started (PID $GATEWAY_PID)"
+fi
+
 cleanup() {
   if [[ -n "$TITLE_PID" ]]; then
     kill "$TITLE_PID" 2>/dev/null || true
+  fi
+  if [[ -n "$GATEWAY_PID" ]]; then
+    kill "$GATEWAY_PID" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT
