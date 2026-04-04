@@ -24,6 +24,13 @@ export GOOGLE_API_KEY="no"
 export GOOGLE_DEFAULT_CLIENT_ID="no"
 export GOOGLE_DEFAULT_CLIENT_SECRET="no"
 
+# If chrome-sandbox exists but isn't SUID root, move it aside so Chromium
+# falls back to the kernel namespace sandbox.
+SANDBOX="$HOME/.local/lib/ami-browser/chrome-sandbox"
+if [[ -f "$SANDBOX" && ! -u "$SANDBOX" ]]; then
+  mv "$SANDBOX" "${SANDBOX}.disabled" 2>/dev/null || true
+fi
+
 # ── Force fresh start: clear saved session so browser opens new tab ──
 rm -f "$PROFILE_DIR/Default/Sessions/Session_"* "$PROFILE_DIR/Default/Sessions/Tabs_"* 2>/dev/null || true
 

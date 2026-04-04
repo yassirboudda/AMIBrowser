@@ -11,7 +11,7 @@ EXT_ADBLOCK="$HOME/snap/chromium/common/ami-adblocker-extension"
 EXT_WALLET="$HOME/snap/chromium/common/ami-wallet-extension"
 EXT_REWARDS="$HOME/snap/chromium/common/ami-rewards-extension"
 EXT_WEBSTORE="$HOME/snap/chromium/common/ami-webstore-extension"
-URL="${1:-chrome://newtab}"
+URL="${1:-}"
 
 mkdir -p "$PROFILE_DIR"
 
@@ -19,6 +19,13 @@ mkdir -p "$PROFILE_DIR"
 export GOOGLE_API_KEY="no"
 export GOOGLE_DEFAULT_CLIENT_ID="no"
 export GOOGLE_DEFAULT_CLIENT_SECRET="no"
+
+# If chrome-sandbox exists but isn't SUID root, move it aside so Chromium
+# falls back to the kernel namespace sandbox (requires unprivileged_userns_clone=1).
+SANDBOX="$HOME/.local/lib/ami-browser/chrome-sandbox"
+if [[ -f "$SANDBOX" && ! -u "$SANDBOX" ]]; then
+  mv "$SANDBOX" "${SANDBOX}.disabled" 2>/dev/null || true
+fi
 
 ARGS=(
   --user-data-dir="$PROFILE_DIR"
@@ -91,6 +98,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-"$AMI_BROWSER" "${ARGS[@]}" "$URL" &
+# Only pass a URL if one was explicitly provided (e.g. from %U in the desktop entry)
+if [[ -n "${URL}" ]]; then
+  "$AMI_BROWSER" "${ARGS[@]}" "$URL" &
+else
+  "$AMI_BROWSER" "${ARGS[@]}" &
+fi
 BROWSER_PID=$!
 wait "$BROWSER_PID"

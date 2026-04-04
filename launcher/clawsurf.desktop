@@ -8,6 +8,6 @@ Icon=$HOME/.local/share/pixmaps/ami-browser.png
 Terminal=false
 Categories=Network;WebBrowser;
 MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
-StartupNotify=false
+StartupNotify=true
 StartupWMClass=AMI-Browser
 Keywords=ami;browser;automation;agent;ai;

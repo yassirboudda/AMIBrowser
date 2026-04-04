@@ -25,6 +25,12 @@ if [[ -d "$DIST_DIR" ]]; then
   mkdir -p "$AMI_BROWSER_DIR"
   cp -r "$DIST_DIR/"* "$AMI_BROWSER_DIR/"
   chmod +x "$AMI_BROWSER_DIR/ami-browser"
+  # chrome-sandbox needs root:root + SUID 4755 for the SUID sandbox
+  if [[ -f "$AMI_BROWSER_DIR/chrome-sandbox" ]]; then
+    sudo chown root:root "$AMI_BROWSER_DIR/chrome-sandbox" 2>/dev/null && \
+    sudo chmod 4755 "$AMI_BROWSER_DIR/chrome-sandbox" 2>/dev/null || \
+    echo "  ⚠ Could not set SUID on chrome-sandbox (needs sudo). Namespace sandbox will be used instead."
+  fi
 else
   echo "  ℹ No build/dist/ami-browser-linux64 found — skipping binary install"
 fi
