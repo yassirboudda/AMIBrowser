@@ -238,18 +238,155 @@ Complete chronological log of every bug encountered and fixed:
 - **Goal:** Side panel with AMI Hub (AI chat, connections, automations).
 - **Why better than Edge Copilot:** AMI Hub supports 50+ AI providers (BYO keys), not locked to one vendor. User can switch between OpenAI, Anthropic, Gemini, Mistral, Groq, etc. in one click.
 - **Why better than Brave Leo:** Leo only supports limited models. AMI Hub supports local models (Ollama, LM Studio), plus automation, connections, and agent capabilities.
-- **Implementation:**
+- **Strawberry's approach (copy this UX):**
+  - Strawberry has an **embedded sidebar chat** that's always available — just a simple chat panel on the right side, with the AI companion avatar + chat input.
+  - A **"Chat" button** sits in the top-right toolbar (next to settings) — one click toggles the sidebar.
+  - The sidebar is **chat-first** — not a full dashboard. Just the conversation. You access the full hub via a navigation icon in the sidebar.
+  - This is a better UX than showing the full hub by default. Most users want to just chat.
+- **AMI Implementation — Two-Mode Design:**
+  1. **Chat-Only Sidebar** (default when clicking Chat button):
+     - Clean chat interface — agent avatar, chat history, input box
+     - "Smart" toggle (like Strawberry's) = thinking mode on/off
+     - Attachment button (+) for files/screenshots
+     - Small nav icons on the left edge: chat, hub, history, settings, automations
+     - Clicking "Hub" icon in sidebar → expands to full AMI Hub panel or opens hub.html
+  2. **Full Hub Sidebar** (when clicking Hub icon):
+     - Full dashboard with connections, skills, automations, stats
+     - Can switch back to chat-only with one click
   - Register in `chrome/browser/ui/views/side_panel/`
-  - Use `SidePanelRegistry` to add "AMI Hub" as built-in panel
+  - Use `SidePanelRegistry` to add "AMI Chat" as built-in panel
   - Keyboard shortcut: `Ctrl+Shift+A`
-  - Tabs within sidebar: Chat | Connections | Automations | Shortcuts
 
-### 4.3 AMI Wallet Toolbar Button
-- **Goal:** Native toolbar button for crypto wallet.
+### 4.3 Chat-Only NTP Option (Strawberry-Inspired)
+- **Strawberry's approach:** Their New Tab Page opens with JUST the chat — a large AI companion avatar centered, chat input below, recent conversations listed, and companion selector at the top.
+- **AMI should offer TWO NTP modes** (user preference in settings):
+  1. **Full Hub NTP** (current default) — dashboard with shortcuts, integrations slider, skills, agent chat, stats
+  2. **Chat-First NTP** (Strawberry-style) — clean page with:
+     - AMI Agent avatar centered
+     - "Chat with AMI Agent..." input box
+     - "Smart" (thinking) toggle — enabled by default for AMI (Strawberry has it but not default)
+     - Recent conversations list below
+     - Sidebar nav to access full Hub, Connections, Memory, Settings
+     - Companion/persona selector at top (switch between Sales Scout, Researcher, etc.)
+- **Why this matters:** Power users want the full hub. New users want simplicity. Give both options.
+- **Default:** Chat-First NTP for new installs (simpler, less overwhelming). Hub NTP for existing users.
+
+### 4.4 AMI Agent Wallet (Crosschain — Agent-Controlled)
+- **Problem:** Core Wallet is the user's personal wallet — we CANNOT let the AI agent control it directly (security risk). But the user wants the agent to execute DeFi operations (trade perps on Arena, swap tokens, etc.).
+- **Solution:** Build a separate **AMI Agent Wallet** — a purpose-built wallet that the agent can use programmatically with user approval.
+- **Architecture:**
+  - **Two wallets in AMI Browser:**
+    1. **Core Wallet** (existing) — user's personal wallet, fully user-controlled, never touched by agent
+    2. **AMI Agent Wallet** (new) — dedicated wallet the agent can use for automated trading/DeFi with approval
+  - **Crosschain support:**
+    - **EVM chains:** Ethereum, Avalanche C-Chain, Arbitrum, Base, Polygon, Optimism, BSC
+    - **Solana:** Full SPL token support + Solana DeFi (Jupiter, Raydium, etc.)
+    - **Key management:** AES-256 encrypted keystore, derived from user password + hardware key (optional)
+  - **Open-source base — recommended options:**
+    1. **Backpack** (`coral-xyz/backpack`) — Apache 2.0, supports EVM + Solana, browser extension, ~2K stars, by Coral/xNFT team. Best crosschain option.
+    2. **Brave Wallet** (built into Brave's Chromium fork) — MPL 2.0, supports EVM + Solana, already designed for Chromium integration. Code in `brave-core/components/brave_wallet/`.
+    3. **Rabby Wallet** (`RabbyHub/Rabby`) — MIT license, excellent EVM security features (pre-transaction simulation), by DeBank. EVM-only though.
+    4. **ethers.js + @solana/web3.js** — Build a lightweight agent-specific wallet using battle-tested libraries. Not a full wallet fork, but a purpose-built agent transaction layer.
+  - **Recommended approach:** Fork **Backpack** as AMI Agent Wallet base:
+    - Already supports EVM + Solana in one wallet
+    - Open source (Apache 2.0 — permissive license)
+    - Browser extension architecture (fits AMI's model)
+    - Strong community and security track record
+    - Add: agent API layer, approval flow, transaction queue
+- **Agent API (how the AI agent uses the wallet):**
+  ```
+  // Gateway exposes these endpoints to the agent:
+  POST /wallet/balance       → { eth: "1.5", sol: "42.0", usdc: "1000" }
+  POST /wallet/approve-tx    → queues transaction, returns approval_id
+  POST /wallet/execute-tx    → executes after user approval
+  POST /wallet/swap          → DEX aggregator swap (1inch, Jupiter)
+  POST /wallet/perp-trade    → Arena/GMX/drift perp position
+  GET  /wallet/positions     → open positions, PnL
+  GET  /wallet/history       → transaction history
+  ```
+- **Security — Approval Flow:**
+  1. Agent decides to execute a transaction (e.g., "buy 0.1 ETH of PEPE on Arena")
+  2. Agent calls `POST /wallet/approve-tx` with transaction details
+  3. **Approval popup appears in browser** (like Strawberry's "APPROVAL NEEDED" dialog):
+     - Shows: action description, token amounts, gas estimate, destination address
+     - Two buttons: **Approve** (green) and **Cancel** (gray)
+     - Pre-transaction simulation: "This will spend 0.1 ETH and receive ~50,000 PEPE"
+  4. User clicks Approve → transaction executes
+  5. **Auto-approval mode** (optional, off by default):
+     - In Settings > Agent Wallet > Auto-approve
+     - Can set spending limits: "Auto-approve transactions under $10"
+     - Can whitelist specific actions: "Auto-approve swaps on Jupiter/Arena"
+     - Can set daily limits: "Max $100/day auto-approved"
+     - **Warning:** "Enabling auto-approval gives the agent direct access to your funds. Use with caution."
+- **Wallet UI (toolbar button):**
+  - Toolbar icon shows wallet balance
+  - Click → popup with:
+    - Balance per chain (ETH, SOL, AVAX, etc.)
+    - Token list with values
+    - Recent transactions
+    - Deposit address (QR code)
+    - Send/Withdraw button
+    - Open positions (if any perp positions active)
+    - Switch chain dropdown
+  - Separate tab: "Agent Activity" — shows all agent-initiated transactions with status
+
+### 4.5 Browser Automation in Tabs (Strawberry-Inspired)
+- **Strawberry's approach (from screenshots):**
+  - When you ask for browser automation in chat, it **opens a new tab** with the target page
+  - The **sidebar chat stays open** in the new tab, showing real-time progress
+  - **Multiple automation tabs can run simultaneously** — each tab has its own automation context
+  - In the chat/thinking view, it shows **screenshots of the tab it's working on** as progress updates
+  - The "Tool calls" view shows each step the agent is taking (e.g., "Checking TikTok video formats" → "Getting ready" → "Thinking")
+- **AMI should implement:**
+  1. **Automation opens in new tab:** When agent needs to navigate/interact with a page, open a new tab instead of navigating the current one
+  2. **Sidebar persists across tabs:** Chat sidebar stays open as user switches between automation tabs
+  3. **Live screenshots in thinking:** While agent works in another tab, show periodic screenshots of what the agent sees in the thinking/progress area
+  4. **Parallel automations:** Support multiple automation tasks running in different tabs simultaneously
+  5. **Tab indicator:** Show a small "AMI working..." badge on tabs where automation is running
+  - **Implementation:**
+    - `chrome.tabs.create()` for new automation tab
+    - `chrome.tabs.captureVisibleTab()` for screenshots (send back to chat as progress)
+    - Each tab gets its own automation context in the gateway
+    - Chat sidebar shows progress for ALL active automations with tab switcher
+
+### 4.6 Thinking Mode (Enabled by Default)
+- **Strawberry's approach:** They have a "Smart" toggle in the chat input that enables thinking/reasoning mode. It's NOT enabled by default.
+- **AMI's advantage:** Enable thinking by default. Our BYO-keys model means users aren't paying per-credit, so there's no cost concern for longer reasoning chains.
+- **Implementation:**
+  - Default `"thinking": true` in agent config
+  - System prompt includes chain-of-thought instructions
+  - UI: "Thinking..." indicator with collapsible reasoning view
+  - Show screenshots from automation tabs in the thinking view
+  - Toggle in chat input to disable if user wants faster responses
+
+### 4.7 Approval System for Agent Actions (Strawberry-Inspired)
+- **Strawberry's approach (screenshot 1):**
+  - "APPROVAL NEEDED" dialog: "Would you like to send this email to Sam?"
+  - Two buttons: **Approve** (orange) and **Cancel** (gray)
+  - Settings option to enable "auto-approval" so agent doesn't need permission
+- **AMI Implementation:**
+  - **Approval dialog** — beautiful modal popup when agent wants to:
+    - Send a message/email
+    - Submit a form
+    - Make a purchase/transaction
+    - Delete data
+    - Share information
+    - Execute a wallet transaction
+  - **Approval categories** (configurable in Settings > Agent > Permissions):
+    - `always_ask` — Always show approval dialog (default for: wallet transactions, sending messages, form submissions)
+    - `ask_first_time` — Ask once per action type, remember choice
+    - `auto_approve` — Never ask (user enables per category)
+    - Spending limit thresholds for wallet: "Auto-approve under $X"
+  - **Bulk approval:** "Approve all 5 pending actions" button for batch operations
+  - **Audit log:** Every approved/rejected action logged with timestamp
+
+### 4.8 AMI Wallet Toolbar Button (Core Wallet — User's Personal Wallet)
+- **Goal:** Native toolbar button for Core Wallet (existing personal wallet).
 - **Why better than Brave Wallet:** Integrate with Core Wallet (Avalanche ecosystem) as backend, but also support MetaMask-compatible dApps.
 - Toolbar button with dropdown: quick balance, recent transactions, quick send.
+- **Separate from Agent Wallet** — this is the user's personal wallet, never touched by the agent.
 
-### 4.4 Custom New Tab Page (Built-in WebUI)
+### 4.9 Custom New Tab Page (Built-in WebUI)
 - **Current problem:** Hub extension overrides NTP → causes white flash (§1.8), shows extension URL.
 - **Fix:** Build NTP as native WebUI at `chrome://newtab/`:
   - Use `NewTabUI` class to register custom page
@@ -257,8 +394,9 @@ Complete chronological log of every bug encountered and fixed:
   - Instant load — no extension overhead
   - **Better than Edge:** Edge NTP is cluttered with MSN news ads. AMI NTP is clean, AI-first.
   - **Better than Brave:** Brave NTP has Brave News (opt-in). AMI NTP has AI chat + automations built-in.
+  - **Two modes:** Full Hub NTP (dashboard) or Chat-First NTP (§4.3) — user's choice
 
-### 4.5 AMI Theme — Default Dark/Purple
+### 4.10 AMI Theme — Default Dark/Purple
 - Ship with AMI's brand colors as default theme:
   - Toolbar: `#1a1a2e` (dark navy)
   - Active tab: `#16213e`
@@ -268,7 +406,7 @@ Complete chronological log of every bug encountered and fixed:
 - Modify `chrome/browser/themes/` default colors
 - User can still change via `chrome://settings/appearance`
 
-### 4.6 Smart Reader Mode (Better than Brave Speed Reader)
+### 4.11 Smart Reader Mode (Better than Brave Speed Reader)
 - Show book icon in address bar for article-type pages
 - Use Chromium's `dom_distiller` but with better UI:
   - Custom fonts (serif/sans-serif/monospace toggle)
@@ -278,27 +416,27 @@ Complete chronological log of every bug encountered and fixed:
   - Text-to-speech with connected TTS provider (ElevenLabs, etc.)
 - **Better than Brave:** Brave Speed Reader is basic text extraction. AMI Reader has AI summarization + TTS.
 
-### 4.7 Web Capture / Screenshot Tool (Edge has this, Brave doesn't)
+### 4.12 Web Capture / Screenshot Tool (Edge has this, Brave doesn't)
 - **Goal:** Built-in screenshot tool accessible via `Ctrl+Shift+S`
 - Options: Full page, selection, visible area
 - Annotate: draw, highlight, text, arrows
 - Share/copy/save
 - **Why:** Edge has this and it's popular. Brave doesn't. Quick win.
 
-### 4.8 Vertical Tabs (Edge has this, Brave recently added it)
+### 4.13 Vertical Tabs (Edge has this, Brave recently added it)
 - **Goal:** Option to show tabs vertically on the left side
 - Tree-style tab grouping with visual hierarchy
 - Collapsible sidebar
 - **Why:** Edge's vertical tabs are very popular. AMI should have them from day one.
 
-### 4.9 Tab Groups with Color Coding
+### 4.14 Tab Groups with Color Coding
 - Chromium already has basic tab groups — enhance with:
   - Auto-group by domain
   - AI-suggested grouping: "Group these 5 tabs about 'machine learning' together?"
   - Save/restore tab groups across sessions
   - Named workspaces (like Edge Workspaces)
 
-### 4.10 Drop / Cross-Device Sharing (Edge Feature)
+### 4.15 Drop / Cross-Device Sharing (Edge Feature)
 - **Goal:** Share files, links, notes between devices via AMI account
 - Edge has "Drop" — a lightweight cross-device sharing feature
 - AMI can do this via the gateway/sync system
@@ -509,9 +647,16 @@ Brave's strengths and how AMI beats each one:
 | **Marketing** | Track competitors, metrics | AI agent + automations | Comparable |
 | **Operations** | Morning briefs, reports | Automations + scheduled tasks | Comparable |
 | **Smart History** | NL search of browse history | Not yet | ⬜ Build this (§9.1) |
-| **Approval Before Actions** | Companions ask approval | Shows action plan before executing | Comparable |
+| **Chat-First NTP** | Companion-centric NTP | **Dual mode: Hub or Chat-First NTP** | AMI wins (user choice) |
+| **Sidebar Chat** | Embedded sidebar companion | **AMI Sidebar with tab-opening agent** | AMI wins (parallel) |
+| **Parallel Automations** | Multi-tab automations | **Multi-tab with live screenshots** | Comparable |
+| **Approval System** | Approve/Cancel dialog | **Granular approval + auto-approve rules** | AMI wins (§4.7) |
+| **Thinking / Reasoning** | Optional "Smart" toggle | **Enabled by default** | AMI wins (always smart) |
+| **Automation Screenshots** | Shows page screenshots | **Live screenshots in thinking feed** | Comparable |
+| **Agent Wallet (DeFi)** | None | **AMI Agent Wallet (EVM + Solana)** | AMI wins |
+| **Perp Trading** | None | **Arena perps via Agent Wallet** | AMI wins |
 | **Ad Blocker** | None | **AMI Shield** | AMI wins |
-| **Crypto Wallet** | None | **AMI Wallet** | AMI wins |
+| **Crypto Wallet** | None | **AMI Wallet (Core + Agent)** | AMI wins |
 | **Privacy** | Data goes to CloudFlare | **Local-first, zero telemetry** | AMI wins |
 | **Open Source** | Closed source, proprietary | **Open source** | AMI wins |
 | **Local AI** | No (cloud-only) | **Ollama, LM Studio support** | AMI wins |
@@ -557,11 +702,14 @@ Brave's strengths and how AMI beats each one:
 3. **Local AI** — AMI works with Ollama/LM Studio. Strawberry is cloud-only.
 4. **Linux** — Strawberry doesn't run on Linux. AMI does.
 5. **Ad blocker** — Strawberry has none. AMI has Shield.
-6. **Crypto wallet** — Strawberry has none. AMI has Wallet.
-7. **Privacy** — Strawberry sends data to CloudFlare. AMI is local-first.
-8. **Open source** — Strawberry is closed. AMI can be audited.
-9. **Chrome extensions** — Full Chrome Web Store compatibility.
-10. **Offline** — AMI works offline with local models. Strawberry needs credits + internet.
+6. **Agent Wallet (DeFi)** — Strawberry has ZERO crypto. AMI has a crosschain Agent Wallet (EVM + Solana) + Core Wallet for personal use.
+7. **Perp Trading** — AMI agent can trade perps on Arena autonomously. Strawberry can't touch DeFi.
+8. **Thinking by default** — Strawberry makes you toggle "Smart" mode. AMI thinks by default — always at full power.
+9. **Granular approval** — Strawberry has Approve/Cancel. AMI has category-based auto-approve, budget limits, audit logs.
+10. **Privacy** — Strawberry sends data to CloudFlare. AMI is local-first, zero telemetry.
+11. **Open source** — Strawberry is closed. AMI can be audited.
+12. **Chrome extensions** — Full Chrome Web Store compatibility.
+13. **Offline** — AMI works offline with local models. Strawberry needs credits + internet.
 
 ### 9.2 Messaging Against Strawberry (Marketing)
 
@@ -685,7 +833,10 @@ These runtime hacks in the launcher should become unnecessary with proper C++ ch
 ### Phase 3: Feature Parity (v3.0) — Beat Edge & Brave
 - [ ] AMI Shield as native toolbar button
 - [ ] AMI Hub as native sidebar panel
-- [ ] Custom NTP as WebUI
+- [ ] Custom NTP as WebUI (dual mode: Full Hub or Chat-First)
+- [ ] **AMI Sidebar with chat-first design** (§4.2)
+- [ ] **Chat-Only NTP option** (§4.3 — Strawberry-style)
+- [ ] **Thinking mode enabled by default** (§4.6)
 - [ ] Vertical tabs
 - [ ] Tab groups with AI suggestions
 - [ ] Web capture / screenshot tool
@@ -696,6 +847,10 @@ These runtime hacks in the launcher should become unnecessary with proper C++ ch
 - [ ] Cross-device sync (AMI Sync)
 
 ### Phase 4: Destroy Strawberry (v4.0) — AI Dominance
+- [ ] **AMI Agent Wallet** (Backpack fork, EVM + Solana) (§4.4)
+- [ ] **Approval system for agent actions** (§4.7 — granular + auto-approve)
+- [ ] **Parallel browser automations in tabs** (§4.5 — live screenshots)
+- [ ] **Arena perp trading via Agent Wallet**
 - [ ] Smart History (NL search of browsing history)
 - [ ] AI Companions / Personas (Sales, Recruiter, Researcher, etc.)
 - [ ] Pre-built workflow templates
