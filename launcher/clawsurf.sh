@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROFILE_DIR="$HOME/snap/chromium/common/ami-browser-profile"
+AMI_BROWSER="$HOME/.local/lib/ami-browser/ami-browser"
+PROFILE_DIR="$HOME/.local/share/ami-browser/profile"
 EXT_RELAY="$HOME/snap/chromium/common/clawsurf-relay-extension"
 EXT_TEACH="$HOME/snap/chromium/common/clawsurf-teachanagent"
 EXT_DEVTOOLS_MCP="$HOME/snap/chromium/common/clawsurf-devtools-mcp"
@@ -85,6 +86,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-/snap/bin/chromium "${ARGS[@]}" "$URL" &
-CHROMIUM_PID=$!
-wait "$CHROMIUM_PID"
+"$AMI_BROWSER" "${ARGS[@]}" "$URL" &
+BROWSER_PID=$!
+wait "$BROWSER_PID"

@@ -12,10 +12,22 @@ EXT_ADBLOCK_DEST="$HOME/snap/chromium/common/ami-adblocker-extension"
 EXT_WALLET_DEST="$HOME/snap/chromium/common/ami-wallet-extension"
 EXT_REWARDS_DEST="$HOME/snap/chromium/common/ami-rewards-extension"
 MCP_SERVER_DIR="$HOME/.local/share/clawsurf/devtools-mcp-server"
+AMI_BROWSER_DIR="$HOME/.local/lib/ami-browser"
 BIN_DIR="$HOME/.local/bin"
 APP_DIR="$HOME/.local/share/applications"
 
 echo "🦀 Installing ClawSurf..."
+
+# 0. AMI Browser binary (if tarball or extracted dir exists)
+DIST_DIR="$REPO_DIR/build/dist/ami-browser-linux64"
+if [[ -d "$DIST_DIR" ]]; then
+  echo "  → Installing AMI Browser binary to $AMI_BROWSER_DIR"
+  mkdir -p "$AMI_BROWSER_DIR"
+  cp -r "$DIST_DIR/"* "$AMI_BROWSER_DIR/"
+  chmod +x "$AMI_BROWSER_DIR/ami-browser"
+else
+  echo "  ℹ No build/dist/ami-browser-linux64 found — skipping binary install"
+fi
 
 # 1. Browser Relay extension
 echo "  → Copying Browser Relay extension to $EXT_RELAY_DEST"
