@@ -13,10 +13,16 @@ EXT_HUB="$REPO_DIR/clawsurf-hub"
 EXT_ADBLOCK="$REPO_DIR/ami-adblocker"
 EXT_WALLET="$REPO_DIR/ami-wallet"
 EXT_REWARDS="$REPO_DIR/ami-rewards"
+EXT_WEBSTORE="$REPO_DIR/ami-webstore"
 URL="${1:-chrome://newtab}"
 PORTS=(18789 18792 18800 9223)
 
 mkdir -p "$PROFILE_DIR"
+
+# Suppress "Google API keys are missing" infobar
+export GOOGLE_API_KEY="no"
+export GOOGLE_DEFAULT_CLIENT_ID="no"
+export GOOGLE_DEFAULT_CLIENT_SECRET="no"
 
 # ── Force fresh start: clear saved session so browser opens new tab ──
 rm -f "$PROFILE_DIR/Default/Sessions/Session_"* "$PROFILE_DIR/Default/Sessions/Tabs_"* 2>/dev/null || true
@@ -45,8 +51,8 @@ ARGS=(
   --remote-debugging-port=18800
   --no-first-run
   --no-default-browser-check
+  --disable-infobars
   --class=AMI-Browser
-  --user-agent="AMI Browser/2.0"
   --ozone-platform=x11
   --disable-features=ExtensionServiceWorkerLifetimeV2
   --disable-background-timer-throttling
@@ -56,7 +62,7 @@ ARGS=(
 
 # Collect extensions to load
 EXT_LIST=""
-for ext in "$EXT_RELAY" "$EXT_TEACH" "$EXT_DEVTOOLS_MCP" "$EXT_HUB" "$EXT_ADBLOCK" "$EXT_WALLET" "$EXT_REWARDS"; do
+for ext in "$EXT_RELAY" "$EXT_TEACH" "$EXT_DEVTOOLS_MCP" "$EXT_HUB" "$EXT_ADBLOCK" "$EXT_WALLET" "$EXT_REWARDS" "$EXT_WEBSTORE"; do
   if [[ -d "$ext" ]]; then
     if [[ -n "$EXT_LIST" ]]; then
       EXT_LIST="$EXT_LIST,$ext"

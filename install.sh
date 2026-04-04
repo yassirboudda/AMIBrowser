@@ -72,6 +72,12 @@ echo "  → Copying AMI Rewards extension to $EXT_REWARDS_DEST"
 mkdir -p "$EXT_REWARDS_DEST"
 cp -r "$REPO_DIR/ami-rewards/"* "$EXT_REWARDS_DEST/"
 
+# 8b. AMI Web Store extension
+EXT_WEBSTORE_DEST="$HOME/snap/chromium/common/ami-webstore-extension"
+echo "  → Copying AMI Web Store extension to $EXT_WEBSTORE_DEST"
+mkdir -p "$EXT_WEBSTORE_DEST"
+cp -r "$REPO_DIR/ami-webstore/"* "$EXT_WEBSTORE_DEST/"
+
 # 9. Configure VS Code MCP (if not already set)
 VSCODE_MCP="$HOME/.config/Code/User/mcp.json"
 if [[ ! -f "$VSCODE_MCP" ]]; then
@@ -107,15 +113,38 @@ chmod +x "$BIN_DIR/AMI-Browser" "$BIN_DIR/AMI-Browser-launch"
 ln -sf "$BIN_DIR/AMI-Browser" "$BIN_DIR/ClawSurf"
 ln -sf "$BIN_DIR/AMI-Browser-launch" "$BIN_DIR/ClawSurf-launch"
 
-# 11. Desktop entry
+# 11. Install application icon
+echo "  → Installing AMI Browser icon"
+ICON_SRC="$REPO_DIR/amibrowser/ami-logo.png"
+if [[ -f "$ICON_SRC" ]]; then
+  ICON_DIR="$HOME/.local/share/icons/hicolor"
+  for size in 16 32 48 128 256 512; do
+    dest="$ICON_DIR/${size}x${size}/apps"
+    mkdir -p "$dest"
+    if command -v convert &>/dev/null; then
+      convert "$ICON_SRC" -resize "${size}x${size}" "$dest/ami-browser.png"
+    else
+      cp "$ICON_SRC" "$dest/ami-browser.png"
+    fi
+  done
+  # Also install the original as a fallback pixmap
+  mkdir -p "$HOME/.local/share/pixmaps"
+  cp "$ICON_SRC" "$HOME/.local/share/pixmaps/ami-browser.png"
+  # Update icon cache
+  if command -v gtk-update-icon-cache &>/dev/null; then
+    gtk-update-icon-cache -f -t "$ICON_DIR" 2>/dev/null || true
+  fi
+fi
+
+# 12. Desktop entry
 echo "  → Installing desktop entry"
 mkdir -p "$APP_DIR"
-sed "s|\\$HOME|$HOME|g" "$REPO_DIR/launcher/clawsurf.desktop" > "$APP_DIR/ami-browser.desktop"
+sed "s|\\\$HOME|$HOME|g" "$REPO_DIR/launcher/clawsurf.desktop" > "$APP_DIR/ami-browser.desktop"
 
 # Backward compatibility desktop alias
 cp "$APP_DIR/ami-browser.desktop" "$APP_DIR/clawsurf.desktop"
 
-# 12. Update desktop database (optional)
+# 13. Update desktop database (optional)
 if command -v update-desktop-database &>/dev/null; then
   update-desktop-database "$APP_DIR" 2>/dev/null || true
 fi

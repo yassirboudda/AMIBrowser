@@ -10,18 +10,22 @@ EXT_HUB="$HOME/snap/chromium/common/clawsurf-hub-extension"
 EXT_ADBLOCK="$HOME/snap/chromium/common/ami-adblocker-extension"
 EXT_WALLET="$HOME/snap/chromium/common/ami-wallet-extension"
 EXT_REWARDS="$HOME/snap/chromium/common/ami-rewards-extension"
+EXT_WEBSTORE="$HOME/snap/chromium/common/ami-webstore-extension"
 URL="${1:-chrome://newtab}"
 
 mkdir -p "$PROFILE_DIR"
 
+# Suppress "Google API keys are missing" infobar
+export GOOGLE_API_KEY="no"
+export GOOGLE_DEFAULT_CLIENT_ID="no"
+export GOOGLE_DEFAULT_CLIENT_SECRET="no"
+
 ARGS=(
   --user-data-dir="$PROFILE_DIR"
-  --remote-debugging-port=18800
   --no-first-run
   --no-default-browser-check
+  --disable-infobars
   --class=AMI-Browser
-  --app-name="AMI Browser"
-  --user-agent="AMI Browser"
   --ozone-platform=x11
   # ── Keep MV3 service workers alive ──
   --disable-features=ExtensionServiceWorkerLifetimeV2
@@ -32,7 +36,7 @@ ARGS=(
 
 # Collect extensions to load
 EXT_LIST=""
-for ext in "$EXT_RELAY" "$EXT_TEACH" "$EXT_DEVTOOLS_MCP" "$EXT_HUB" "$EXT_ADBLOCK" "$EXT_WALLET" "$EXT_REWARDS"; do
+for ext in "$EXT_RELAY" "$EXT_TEACH" "$EXT_DEVTOOLS_MCP" "$EXT_HUB" "$EXT_ADBLOCK" "$EXT_WALLET" "$EXT_REWARDS" "$EXT_WEBSTORE"; do
   if [[ -d "$ext" ]]; then
     if [[ -n "$EXT_LIST" ]]; then
       EXT_LIST="$EXT_LIST,$ext"

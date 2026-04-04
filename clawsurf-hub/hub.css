@@ -82,6 +82,8 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .logo-mark { display: flex; }
@@ -919,11 +921,30 @@ body {
 }
 
 /* ══════════════ RESPONSIVE ══════════════ */
+@media (max-width: 1200px) {
+  #hub-grid {
+    grid-template-columns: 240px 1fr 280px;
+    gap: 14px;
+    padding: 14px 16px;
+  }
+}
+
 @media (max-width: 1024px) {
   #hub-grid {
     grid-template-columns: 1fr 300px;
   }
   #col-shortcuts { order: 3; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .brand-subtitle { display: none; }
+}
+
+@media (max-width: 860px) {
+  #topbar { flex-wrap: wrap; height: auto; padding: 8px 16px; gap: 8px; }
+  .topbar-left { flex-shrink: 0; }
+  .topbar-center { flex-basis: 100%; order: 3; margin: 0; max-width: 100%; }
+  .topbar-right { margin-left: auto; }
+  .status-pills { flex-wrap: wrap; }
+  .brand { font-size: 15px; white-space: nowrap; }
+  .brand-subtitle { display: none; }
 }
 
 @media (max-width: 720px) {
@@ -932,6 +953,8 @@ body {
   }
   #col-tools { order: 2; }
   #col-shortcuts { grid-template-columns: 1fr; }
+  .topbar-right .icon-btn { width: 30px; height: 30px; }
+  .pill { font-size: 10px; padding: 2px 8px; }
 }
 
 /* ══════════════ PERSONA LINK ══════════════ */

@@ -134,10 +134,10 @@ const SLIDER_INTEGRATIONS = [
   { label: 'OpenAI',        logo: 'https://cdn.simpleicons.org/openai' },
   { label: 'Anthropic',     logo: 'https://cdn.simpleicons.org/anthropic' },
   { label: 'Google Gemini',  logo: 'https://cdn.simpleicons.org/googlegemini/4285F4' },
-  { label: 'Mistral AI',    logo: 'https://cdn.simpleicons.org/mistral' },
+  { label: 'Mistral AI',    logo: 'https://cdn.simpleicons.org/mistralai' },
   { label: 'Meta',          logo: 'https://cdn.simpleicons.org/meta/0082FB' },
   { label: 'HuggingFace',   logo: 'https://cdn.simpleicons.org/huggingface' },
-  { label: 'Groq',          logo: 'https://cdn.simpleicons.org/groq' },
+  { label: 'Groq',          logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23f55036'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='42' fill='white'%3EG%3C/text%3E%3C/svg%3E" },
   { label: 'Perplexity',    logo: 'https://cdn.simpleicons.org/perplexity' },
   { label: 'Telegram',      logo: 'https://cdn.simpleicons.org/telegram/26A5E4' },
   { label: 'Discord',       logo: 'https://cdn.simpleicons.org/discord/5865F2' },
@@ -168,10 +168,10 @@ const SLIDER_INTEGRATIONS = [
   { label: 'Datadog',       logo: 'https://cdn.simpleicons.org/datadog/632CA6' },
   { label: 'Grafana',       logo: 'https://cdn.simpleicons.org/grafana/F46800' },
   { label: 'ElevenLabs',    logo: 'https://cdn.simpleicons.org/elevenlabs' },
-  { label: 'Pinecone',      logo: 'https://cdn.simpleicons.org/pinecone' },
+  { label: 'Pinecone',      logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23000'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='36' fill='white'%3EP%3C/text%3E%3C/svg%3E" },
   { label: 'LangChain',     logo: 'https://cdn.simpleicons.org/langchain/1C3C3C' },
-  { label: 'Stability AI',  logo: 'https://cdn.simpleicons.org/stabilityai' },
-  { label: 'Plaid',         logo: 'https://cdn.simpleicons.org/plaid' },
+  { label: 'Stability AI',  logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%237c3aed'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='36' fill='white'%3ESA%3C/text%3E%3C/svg%3E" },
+  { label: 'Plaid',         logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23111'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='36' fill='white'%3EPL%3C/text%3E%3C/svg%3E" },
   { label: 'Shopify',       logo: 'https://cdn.simpleicons.org/shopify/7AB55C' },
   { label: 'Zapier',        logo: 'https://cdn.simpleicons.org/zapier/FF4A00' },
 ];
@@ -181,8 +181,10 @@ function initIntegrationSlider() {
   const track  = document.getElementById('integration-track');
   if (!slider || !track) return;
 
+  const fallbackIcon = (label) => `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%239333ea'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3E${encodeURIComponent(label.charAt(0))}%3C/text%3E%3C/svg%3E`;
+
   const pillHTML = SLIDER_INTEGRATIONS.map(i =>
-    `<span class="integration-pill"><img src="${i.logo}" alt="" width="16" height="16" loading="lazy">${i.label}</span>`
+    `<span class="integration-pill"><img src="${i.logo}" alt="" width="16" height="16" loading="lazy" onerror="this.onerror=null;this.src='${fallbackIcon(i.label)}'">${i.label}</span>`
   ).join('');
   track.innerHTML = pillHTML + pillHTML;          // duplicate for seamless loop
 

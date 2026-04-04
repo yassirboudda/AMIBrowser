@@ -1,0 +1,66 @@
+/* AMI Web Store — CWS integration styles */
+
+/* Hide "Switch to Chrome" banners */
+.CtSBdf, .hSHfTb {
+  display: none !important;
+}
+
+/* AMI Install button */
+.ami-install-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  border: none;
+  border-radius: 24px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+  font-family: 'Google Sans', 'Segoe UI', system-ui, sans-serif;
+}
+
+.ami-install-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.4);
+  background: linear-gradient(135deg, #6d28d9, #9333ea);
+}
+
+.ami-install-btn:active {
+  transform: translateY(0);
+}
+
+.ami-install-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ami-install-icon {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Floating install bar (fallback) */
+.ami-install-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #ede9fe, #fce7f3);
+  border-bottom: 1px solid #e9d5ff;
+  gap: 12px;
+}
+
+.ami-install-bar::before {
+  content: 'Install extensions directly in AMI Browser';
+  font-size: 14px;
+  font-weight: 500;
+  color: #4c1d95;
+}
