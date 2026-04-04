@@ -583,7 +583,7 @@ async function sendChat() {
       body: JSON.stringify({
         message: text,
         config,
-        history: chatHistory.slice(-20).map(m => ({ role: m.role, content: m.text })),
+        history: chatHistory.slice(-20).map(m => ({ role: m.role === 'agent' ? 'assistant' : m.role, content: m.text })),
       })
     });
     hideThinking();
@@ -613,9 +613,9 @@ function handleBuiltinCommand(text) {
   const lower = text.toLowerCase().trim();
 
   // Navigate command — skip compound intents ("go to youtube and play X") so they reach the gateway
-  const compoundCheck = /^(?:go to|open|navigate to?|visit)\s+\S+\s+(?:and|then)\s+/i.test(lower);
+  const compoundCheck = /^(?:go to|open|navigate to?|visit|va (?:sur|à)|ouvre|ve a|abre|geh (?:auf|zu)|vai (?:ao?|para))\s+\S+\s+(?:and|then|et|y|e|und|puis)\s+/i.test(lower);
   if (!compoundCheck) {
-    const navMatch = lower.match(/^(?:go to|open|navigate to|visit)\s+(.+)/);
+    const navMatch = lower.match(/^(?:go to|open|navigate to|visit|va (?:sur|à)|ouvre|ve a|abre|geh (?:auf|zu)|vai (?:ao?|para))\s+(.+)/);
     if (navMatch) {
       const url = navMatch[1].trim();
       hideThinking();
