@@ -37,6 +37,12 @@ chmod +x install.sh
 ./install.sh
 ```
 
+
+## Download AMI Browser (Linux)
+
+The official Linux version of AMI Browser is available at:
+**[https://github.com/yassirboudda/AMIBrowser](https://github.com/yassirboudda/AMIBrowser)**
+
 Installer payload lookup order for AMI Browser binary:
 1. `build/dist/ami-browser-linux64/` (extracted payload)
 2. `build/dist/ami-browser-linux64.tar.gz`
