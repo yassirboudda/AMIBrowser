@@ -1,111 +1,95 @@
-# ClawSurf 🦀🏄
 
-A dedicated Chromium-based browser for [OpenClaw](https://openclaw.ai) automation. ClawSurf runs as a separate browser profile with built-in extensions pre-loaded, so your main browser stays untouched.
+# AMI Browser for Linux
 
-## Features
+A next-generation Chromium-based browser for automation, AI, and Web3 — now fully rebranded as **AMI Browser** (formerly ClawSurf) and packed with 200+ integrations, built-in OpenClaw agent, and advanced privacy tools.
 
-- **Isolated profile** — separate user data directory, won't interfere with your daily browser
-- **OpenClaw Browser Relay extension** — auto-loaded on every page, maintains CDP (Chrome DevTools Protocol) connection for AI agent control
-- **Always-on status indicator** — floating pill shows connection status (🟢 LISTENING / 🟡 CDP READY / 🔴 OFF)
-- **Auto-attach** — relay re-attaches automatically on tab create, navigation, and page load
-- **Title rewriting** — replaces "Chromium" with "ClawSurf" in window titles
-- **Dock-friendly** — proper `StartupWMClass` and desktop entry so it shows as "ClawSurf" in your taskbar
-- **TeachAnAgent** — built-in action recorder extension with play/pause/stop/export UI for capturing browser interactions as JSON
-- **DevTools MCP Logger** — captures all browser activity (network, console, errors, DOM, performance) and exposes it to GitHub Copilot via MCP
-- **Remote debugging enabled** — CDP port 18800 always active for automation
+---
 
-## Bundled Extensions
+## 🚀 What is AMI Browser?
 
-| Extension | Purpose |
-|-----------|---------|
-| **Browser Relay** | Bridges ClawSurf ↔ OpenClaw gateway via WebSocket relay + CDP forwarding |
-| **TeachAnAgent** | Records browser interactions (clicks, inputs, navigation) as exportable JSON |
-| **DevTools MCP Logger** | Captures browser debugging data and streams it to an MCP server for VS Code / GitHub Copilot |
+**AMI Browser** is a privacy-first, automation-ready browser for Linux, designed for power users, developers, and crypto/web3 enthusiasts. It combines a hardened Chromium core with:
+- **Built-in OpenClaw agent** for browser automation, scripting, and AI workflows
+- **247+ integrations**: Web3 wallets, DeFi, Discord, Telegram, X, Notion, GitHub, and more
+- **Advanced privacy/adblock**: AMI Adblocker, tracker blocking, anti-fingerprinting
+- **Action recording**: TeachAnAgent extension to record and replay browser actions as JSON
+- **DevTools MCP Logger**: Full browser debugging, error capture, and VS Code Copilot integration
+- **Rewards & wallet**: AMI Rewards, built-in wallet, and crypto tools
+- **Linux-native**: Fast, secure, and open source
 
-## Requirements
+---
 
-- **Linux** with Chromium installed via snap (`/snap/bin/chromium`)
-- **Node.js** 18+ (for MCP server)
-- [OpenClaw](https://openclaw.ai) gateway running locally (default port `18789`) — optional, only for relay
+## ✨ Key Features
 
-## Install
+- **OpenClaw Agent**: Automate browsing, fill forms, extract data, run scripts, and connect to AI models
+- **247+ Integrations**: Connect Discord, Telegram, X, Notion, GitHub, DeFi, and more
+- **Web3 Ready**: Built-in wallet, dApp support, and crypto tools
+- **Privacy by Default**: Adblock, tracker blocking, anti-fingerprinting, isolated profiles
+- **Action Recorder**: Record, export, and replay browser actions (TeachAnAgent)
+- **DevTools MCP Logger**: Debug, capture errors, and stream browser events to VS Code Copilot
+- **Rewards**: Earn AMI rewards for browsing and using integrations
+- **Linux Desktop Integration**: Native launcher, desktop entry, and isolated user data
 
-```bash
-git clone https://github.com/Airpote/ClawSurf.git
-cd ClawSurf
-chmod +x install.sh
-./install.sh
-```
+---
 
+## 🛠️ Install
 
-## Download AMI Browser (Linux)
+1. Download the latest Linux release: [Releases](https://github.com/yassirboudda/AMIBrowser/releases)
+2. Extract the tarball and run `./install.sh`
+3. Launch with `AMI-Browser` or from your desktop menu
 
-The official Linux version of AMI Browser is available at:
-**[https://github.com/yassirboudda/AMIBrowser](https://github.com/yassirboudda/AMIBrowser)**
+---
 
-Installer payload lookup order for AMI Browser binary:
-1. `build/dist/ami-browser-linux64/` (extracted payload)
-2. `build/dist/ami-browser-linux64.tar.gz`
-3. `~/Downloads/ami-browser-linux64.tar.gz`
-
-Current target build: `AMI Browser 146.0.7680.80`.
-
-The installer will:
-1. Copy all three extensions to `~/snap/chromium/common/`
-2. Install the MCP server to `~/.local/share/clawsurf/devtools-mcp-server/`
-3. Configure VS Code MCP (`~/.config/Code/User/mcp.json`) if not already set
-4. Install the `ClawSurf` launcher to `~/.local/bin/`
-5. Create a desktop entry for your taskbar
-
-## Usage
-
-```bash
-# Open ClawSurf
-ClawSurf
-
-# Open a specific URL
-ClawSurf https://example.com
-```
-
-The browser connects to:
-- **CDP** on `127.0.0.1:18800` (Chromium remote debugging)
-- **OpenClaw Gateway** on `127.0.0.1:18789`
-- **Relay WebSocket** on `127.0.0.1:18792`
-- **MCP HTTP** on `127.0.0.1:9223` (DevTools MCP Logger → MCP server)
-
-## Project Structure
+## 📦 Project Structure
 
 ```
-ClawSurf/
-├── extension/                 # Browser Relay (Chrome MV3)
-│   ├── manifest.json
-│   ├── background.js          # Service worker (relay, CDP forwarding)
-│   ├── content-status.js      # In-page status pill + title rewriter
-│   ├── options.html / .js     # Settings page
-│   └── icons/
-├── teachanagent/              # TeachAnAgent recorder (Chrome MV3)
-│   ├── manifest.json
-│   ├── background.js          # State machine + event aggregation
-│   ├── content-recorder.js    # DOM event capture + visual indicator
-│   ├── popup.html / .js       # Record/Pause/Stop/Export UI
-│   └── icons/
-├── devtools-mcp/              # DevTools MCP Logger (Chrome MV3)
-│   ├── manifest.json
-│   ├── background.js          # chrome.debugger API capture
-│   ├── popup.html / .js / .css# Activate/Deactivate UI
-│   ├── journal.html / .js / .css # Log viewer with filtering
-│   └── icons/
-├── devtools-mcp-server/       # MCP Server (Node.js)
-│   ├── server.js              # stdio MCP + HTTP receiver on port 9223
-│   ├── package.json
-│   └── package-lock.json
-├── launcher/
-│   ├── clawsurf.sh            # Main launcher (loads all extensions)
-│   ├── clawsurf-launch.sh     # Background launcher (for .desktop)
-│   └── clawsurf.desktop       # Desktop entry template
-├── install.sh                 # Installer
+AMI-Browser/
+├── ami-adblocker/      # Advanced ad/tracker blocker extension
+├── ami-wallet/         # Web3 wallet extension
+├── ami-rewards/        # Rewards and incentives
+├── ami-webstore/       # Extension store UI
+├── clawsurf-hub/       # Main browser hub UI (now AMI Hub)
+├── devtools-mcp/       # DevTools MCP Logger extension
+├── devtools-mcp-server/# MCP server for VS Code Copilot
+├── teachanagent/       # Action recorder extension
+├── launcher/           # Linux launcher scripts and desktop entry
+├── install.sh          # Installer script
 └── README.md
 ```
+
+---
+
+## 🤖 Built-in Integrations (Sample)
+- Discord, Telegram, X (Twitter), Notion, GitHub, Vercel, AWS, Stripe, PayPal, DeFi, Web3 wallets, and 200+ more
+- See the AMI Hub for the full integrations catalog
+
+---
+
+## 🧠 Built-in OpenClaw Agent
+- Automate any site: fill forms, extract data, run scripts, schedule tasks
+- Chat with the agent, create automations, and connect to AI models (OpenAI, Anthropic, Gemini, etc.)
+- Record and replay actions with TeachAnAgent
+
+---
+
+## 🛡️ Privacy & Security
+- Ad/tracker blocking, anti-fingerprinting, isolated profiles
+- No telemetry, no tracking, open source
+
+---
+
+## 💬 Community & Support
+- [Discord](https://discord.ami.finance/)
+- [Telegram](https://t.me/amichain)
+- [X (Twitter)](https://x.com/amibrowser)
+
+---
+
+## 📝 License
+MIT
+
+---
+
+**AMI Browser** — The all-in-one browser for automation, privacy, and Web3.
 
 ## DevTools MCP Logger — Browser Debugging for AI
 
