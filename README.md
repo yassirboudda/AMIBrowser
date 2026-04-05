@@ -93,7 +93,7 @@ MIT
 
 ## DevTools MCP Logger — Browser Debugging for AI
 
-The DevTools MCP Logger captures real-time browser activity and makes it available to GitHub Copilot (or any MCP client) as queryable context.
+The DevTools MCP Logger captures real-time browser activity and makes it available to GitHub Copilot & Cursor & Codex & Claude Code & Pi... (or any MCP client) as queryable context.
 
 ### Architecture
 
