@@ -37,6 +37,13 @@ chmod +x install.sh
 ./install.sh
 ```
 
+Installer payload lookup order for AMI Browser binary:
+1. `build/dist/ami-browser-linux64/` (extracted payload)
+2. `build/dist/ami-browser-linux64.tar.gz`
+3. `~/Downloads/ami-browser-linux64.tar.gz`
+
+Current target build: `AMI Browser 146.0.7680.80`.
+
 The installer will:
 1. Copy all three extensions to `~/snap/chromium/common/`
 2. Install the MCP server to `~/.local/share/clawsurf/devtools-mcp-server/`

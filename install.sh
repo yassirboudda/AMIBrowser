@@ -15,15 +15,38 @@ MCP_SERVER_DIR="$HOME/.local/share/clawsurf/devtools-mcp-server"
 AMI_BROWSER_DIR="$HOME/.local/lib/ami-browser"
 BIN_DIR="$HOME/.local/bin"
 APP_DIR="$HOME/.local/share/applications"
+AMI_BROWSER_VERSION="146.0.7680.80"
 
 echo "🦀 Installing ClawSurf..."
+echo "  → Target AMI Browser build: $AMI_BROWSER_VERSION"
 
 # 0. AMI Browser binary (if tarball or extracted dir exists)
 DIST_DIR="$REPO_DIR/build/dist/ami-browser-linux64"
+DIST_TARBALL="$REPO_DIR/build/dist/ami-browser-linux64.tar.gz"
+DOWNLOAD_TARBALL="$HOME/Downloads/ami-browser-linux64.tar.gz"
+INSTALL_SOURCE=""
+TEMP_EXTRACT_DIR=""
+
 if [[ -d "$DIST_DIR" ]]; then
+  INSTALL_SOURCE="$DIST_DIR"
+elif [[ -f "$DIST_TARBALL" ]]; then
+  TEMP_EXTRACT_DIR="$(mktemp -d)"
+  tar xzf "$DIST_TARBALL" -C "$TEMP_EXTRACT_DIR"
+  INSTALL_SOURCE="$TEMP_EXTRACT_DIR/ami-browser-linux64"
+elif [[ -f "$DOWNLOAD_TARBALL" ]]; then
+  TEMP_EXTRACT_DIR="$(mktemp -d)"
+  tar xzf "$DOWNLOAD_TARBALL" -C "$TEMP_EXTRACT_DIR"
+  INSTALL_SOURCE="$TEMP_EXTRACT_DIR/ami-browser-linux64"
+fi
+
+if [[ -n "$INSTALL_SOURCE" && -d "$INSTALL_SOURCE" ]]; then
   echo "  → Installing AMI Browser binary to $AMI_BROWSER_DIR"
+  if [[ -d "$AMI_BROWSER_DIR" ]]; then
+    echo "    Removing previous AMI Browser install"
+    rm -rf "$AMI_BROWSER_DIR"
+  fi
   mkdir -p "$AMI_BROWSER_DIR"
-  cp -r "$DIST_DIR/"* "$AMI_BROWSER_DIR/"
+  cp -r "$INSTALL_SOURCE/"* "$AMI_BROWSER_DIR/"
   chmod +x "$AMI_BROWSER_DIR/ami-browser"
   # chrome-sandbox needs root:root + SUID 4755 for the SUID sandbox
   if [[ -f "$AMI_BROWSER_DIR/chrome-sandbox" ]]; then
@@ -31,8 +54,13 @@ if [[ -d "$DIST_DIR" ]]; then
     sudo chmod 4755 "$AMI_BROWSER_DIR/chrome-sandbox" 2>/dev/null || \
     echo "  ⚠ Could not set SUID on chrome-sandbox (needs sudo). Namespace sandbox will be used instead."
   fi
+  "$AMI_BROWSER_DIR/ami-browser" --version 2>/dev/null || true
 else
-  echo "  ℹ No build/dist/ami-browser-linux64 found — skipping binary install"
+  echo "  ℹ No AMI Browser payload found (checked extracted dir + tarballs) — skipping binary install"
+fi
+
+if [[ -n "$TEMP_EXTRACT_DIR" && -d "$TEMP_EXTRACT_DIR" ]]; then
+  rm -rf "$TEMP_EXTRACT_DIR"
 fi
 
 # 0b. AppArmor profile for Ubuntu 24.04+ (allows unprivileged user namespaces)
