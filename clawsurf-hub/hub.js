@@ -35,9 +35,9 @@ const DEFAULT_SHORTCUTS = [
   { label: 'Reddit',         url: 'https://reddit.com',          icon: 'https://cdn.simpleicons.org/reddit/FF4500',       bg: '#fdba74' },
   { label: 'X / Twitter',    url: 'https://x.com',               icon: 'https://cdn.simpleicons.org/x',                   bg: '#e2e8f0' },
   { label: 'Spotify',        url: 'https://open.spotify.com',    icon: 'https://cdn.simpleicons.org/spotify/1DB954',      bg: '#86efac' },
-  { label: 'LinkedIn',       url: 'https://linkedin.com',        icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230A66C2'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='36' fill='white'%3Ein%3C/text%3E%3C/svg%3E",     bg: '#93c5fd' },
+  { label: 'LinkedIn',       url: 'https://linkedin.com',        icon: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%230A66C2%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2736%27 fill=%27white%27%3Ein%3C/text%3E%3C/svg%3E",     bg: '#93c5fd' },
   { label: 'Wikipedia',      url: 'https://wikipedia.org',       icon: 'https://cdn.simpleicons.org/wikipedia',           bg: '#a5f3fc' },
-  { label: 'Amazon',         url: 'https://amazon.com',          icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23FF9900'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='42' fill='white'%3Ea%3C/text%3E%3C/svg%3E",       bg: '#fcd34d' },
+  { label: 'Amazon',         url: 'https://amazon.com',          icon: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23FF9900%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2742%27 fill=%27white%27%3Ea%3C/text%3E%3C/svg%3E",       bg: '#fcd34d' },
 ];
 
 /* ══════════════════════════════════════
@@ -137,23 +137,23 @@ const SLIDER_INTEGRATIONS = [
   { label: 'Mistral AI',    logo: 'https://cdn.simpleicons.org/mistralai' },
   { label: 'Meta',          logo: 'https://cdn.simpleicons.org/meta/0082FB' },
   { label: 'HuggingFace',   logo: 'https://cdn.simpleicons.org/huggingface' },
-  { label: 'Groq',          logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F55036'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3EG%3C/text%3E%3C/svg%3E" },
+  { label: 'Groq',          logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23F55036%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3EG%3C/text%3E%3C/svg%3E" },
   { label: 'Perplexity',    logo: 'https://cdn.simpleicons.org/perplexity' },
   { label: 'Telegram',      logo: 'https://cdn.simpleicons.org/telegram/26A5E4' },
   { label: 'Discord',       logo: 'https://cdn.simpleicons.org/discord/5865F2' },
   { label: 'WhatsApp',      logo: 'https://cdn.simpleicons.org/whatsapp/25D366' },
   { label: 'Slack',         logo: 'https://cdn.simpleicons.org/slack/4A154B' },
   { label: 'Signal',        logo: 'https://cdn.simpleicons.org/signal/3A76F0' },
-  { label: 'Microsoft Teams', logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%236264A7'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3ET%3C/text%3E%3C/svg%3E" },
+  { label: 'Microsoft Teams', logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%236264A7%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ET%3C/text%3E%3C/svg%3E" },
   { label: 'Stripe',        logo: 'https://cdn.simpleicons.org/stripe/635BFF' },
   { label: 'PayPal',        logo: 'https://cdn.simpleicons.org/paypal/003087' },
   { label: 'GitHub',        logo: 'https://cdn.simpleicons.org/github' },
   { label: 'GitLab',        logo: 'https://cdn.simpleicons.org/gitlab/FC6D26' },
   { label: 'Vercel',        logo: 'https://cdn.simpleicons.org/vercel' },
   { label: 'Cloudflare',    logo: 'https://cdn.simpleicons.org/cloudflare/F38020' },
-  { label: 'AWS',           logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23FF9900'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='32' fill='white'%3EAWS%3C/text%3E%3C/svg%3E" },
+  { label: 'AWS',           logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23FF9900%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2732%27 fill=%27white%27%3EAWS%3C/text%3E%3C/svg%3E" },
   { label: 'Docker',        logo: 'https://cdn.simpleicons.org/docker/2496ED' },
-  { label: 'Salesforce',    logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2300A1E0'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3ESf%3C/text%3E%3C/svg%3E" },
+  { label: 'Salesforce',    logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%2300A1E0%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ESf%3C/text%3E%3C/svg%3E" },
   { label: 'HubSpot',       logo: 'https://cdn.simpleicons.org/hubspot/FF7A59' },
   { label: 'Jira',          logo: 'https://cdn.simpleicons.org/jira/0052CC' },
   { label: 'Notion',        logo: 'https://cdn.simpleicons.org/notion' },
@@ -161,17 +161,17 @@ const SLIDER_INTEGRATIONS = [
   { label: 'MongoDB',       logo: 'https://cdn.simpleicons.org/mongodb/47A248' },
   { label: 'Supabase',      logo: 'https://cdn.simpleicons.org/supabase/3FCF8E' },
   { label: 'Firebase',      logo: 'https://cdn.simpleicons.org/firebase/FFCA28' },
-  { label: 'CoinGecko',     logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%238BC53F'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3ECG%3C/text%3E%3C/svg%3E" },
+  { label: 'CoinGecko',     logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%238BC53F%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ECG%3C/text%3E%3C/svg%3E" },
   { label: 'Ethereum',      logo: 'https://cdn.simpleicons.org/ethereum/3C3C3D' },
   { label: 'Twilio',        logo: 'https://cdn.simpleicons.org/twilio' },
   { label: 'Sentry',        logo: 'https://cdn.simpleicons.org/sentry/362D59' },
   { label: 'Datadog',       logo: 'https://cdn.simpleicons.org/datadog/632CA6' },
   { label: 'Grafana',       logo: 'https://cdn.simpleicons.org/grafana/F46800' },
   { label: 'ElevenLabs',    logo: 'https://cdn.simpleicons.org/elevenlabs' },
-  { label: 'Pinecone',      logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23000'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3EP%3C/text%3E%3C/svg%3E" },
+  { label: 'Pinecone',      logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23000%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3EP%3C/text%3E%3C/svg%3E" },
   { label: 'LangChain',     logo: 'https://cdn.simpleicons.org/langchain/1C3C3C' },
-  { label: 'Stability AI',  logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%237C3AED'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3ES%3C/text%3E%3C/svg%3E" },
-  { label: 'Plaid',         logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23111'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3EP%3C/text%3E%3C/svg%3E" },
+  { label: 'Stability AI',  logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%237C3AED%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ES%3C/text%3E%3C/svg%3E" },
+  { label: 'Plaid',         logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23111%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3EP%3C/text%3E%3C/svg%3E" },
   { label: 'Shopify',       logo: 'https://cdn.simpleicons.org/shopify/7AB55C' },
   { label: 'Zapier',        logo: 'https://cdn.simpleicons.org/zapier/FF4A00' },
 ];
@@ -181,7 +181,7 @@ function initIntegrationSlider() {
   const track  = document.getElementById('integration-track');
   if (!slider || !track) return;
 
-  const fallbackIcon = (label) => `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%239333ea'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3E${encodeURIComponent(label.charAt(0))}%3C/text%3E%3C/svg%3E`;
+  const fallbackIcon = (label) => `data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%239333ea%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3E${encodeURIComponent(label.charAt(0))}%3C/text%3E%3C/svg%3E`;
 
   const pillHTML = SLIDER_INTEGRATIONS.map(i =>
     `<span class="integration-pill"><img src="${i.logo}" alt="" width="16" height="16" loading="lazy" onerror="this.onerror=null;this.src='${fallbackIcon(i.label)}'">${i.label}</span>`
