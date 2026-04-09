@@ -201,6 +201,8 @@ body {
   flex-direction: column;
   gap: 14px;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* ══════════════ CARDS ══════════════ */
@@ -213,6 +215,8 @@ body {
   transition: box-shadow .2s;
   /* Voxel 3D illusion */
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 .card::after {
   content: '';
@@ -669,6 +673,9 @@ body {
   font-family: inherit;
   outline: none;
   transition: border-color .15s;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .config-form select:focus,
 .config-form input:focus,
@@ -909,10 +916,20 @@ body {
 .inline-field-row {
   display: flex;
   gap: 8px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .inline-field-row > *:first-child {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inline-field-row .btn-ghost {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .toggle-row-stack {

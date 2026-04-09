@@ -50,29 +50,29 @@ const PROVIDER_ICONS = {
   openai:      'https://cdn.simpleicons.org/openai',
   anthropic:   'https://cdn.simpleicons.org/anthropic',
   gemini:      'https://cdn.simpleicons.org/googlegemini',
-  mistral:     'https://cdn.simpleicons.org/mistral/F7931E',
+  mistral:     'https://cdn.simpleicons.org/mistralai/F7931E',
   grok:        'https://cdn.simpleicons.org/x',
-  deepseek:    'https://cdn.simpleicons.org/deepseek/4D6BFE',
+  deepseek:    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%234D6BFE'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3ED%3C/text%3E%3C/svg%3E",
   openrouter:  'https://cdn.simpleicons.org/openrouter/6C3AED',
   huggingface: 'https://cdn.simpleicons.org/huggingface',
   ollama:      'https://cdn.simpleicons.org/ollama',
-  together:    'https://cdn.simpleicons.org/togetherai/0FA37F',
+  together:    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230FA37F'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3ET%3C/text%3E%3C/svg%3E",
   replicate:   'https://cdn.simpleicons.org/replicate/262626',
   perplexity:  'https://cdn.simpleicons.org/perplexity/20808D',
-  cohere:      'https://cdn.simpleicons.org/cohere/39594D',
-  ai21:        'https://cdn.simpleicons.org/ai21/FF6F61',
-  fireworks:   'https://cdn.simpleicons.org/fireworks/FF4F00',
-  groq:        'https://cdn.simpleicons.org/groq',
-  cerebras:    'https://cdn.simpleicons.org/cerebras/1E40AF',
-  runpod:      'https://cdn.simpleicons.org/runpod/5C2D91',
-  lmstudio:    'https://cdn.simpleicons.org/lmstudio/10B981',
+  cohere:      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2339594D'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3EC%3C/text%3E%3C/svg%3E",
+  ai21:        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23FF6F61'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='34' fill='white'%3EA21%3C/text%3E%3C/svg%3E",
+  fireworks:   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23FF4F00'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3EF%3C/text%3E%3C/svg%3E",
+  groq:        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F55036'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3EG%3C/text%3E%3C/svg%3E",
+  cerebras:    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%231E40AF'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3EC%3C/text%3E%3C/svg%3E",
+  runpod:      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%235C2D91'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3ER%3C/text%3E%3C/svg%3E",
+  lmstudio:    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2310B981'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='34' fill='white'%3ELM%3C/text%3E%3C/svg%3E",
   elevenlabs:  'https://cdn.simpleicons.org/elevenlabs',
-  stability:   'https://cdn.simpleicons.org/stabilityai',
-  midjourney:  'https://cdn.simpleicons.org/midjourney',
+  stability:   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%237C3AED'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3ES%3C/text%3E%3C/svg%3E",
+  midjourney:  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23000'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='34' fill='white'%3EMJ%3C/text%3E%3C/svg%3E",
   whisper:     'https://cdn.simpleicons.org/openai',
   deepgram:    'https://cdn.simpleicons.org/deepgram/13EF93',
-  assemblyai:  'https://cdn.simpleicons.org/assemblyai/3B82F6',
-  pinecone:    'https://cdn.simpleicons.org/pinecone',
+  assemblyai:  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233B82F6'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='34' fill='white'%3EAi%3C/text%3E%3C/svg%3E",
+  pinecone:    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23000'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='40' fill='white'%3EP%3C/text%3E%3C/svg%3E",
   telegram:    'https://cdn.simpleicons.org/telegram',
   discord:     'https://cdn.simpleicons.org/discord',
   whatsapp:    'https://cdn.simpleicons.org/whatsapp',
@@ -88,9 +88,9 @@ const PROVIDER_ICONS = {
   redis:       'https://cdn.simpleicons.org/redis',
   postgresql:  'https://cdn.simpleicons.org/postgresql',
   mysql:       'https://cdn.simpleicons.org/mysql',
-  aws:         'https://cdn.simpleicons.org/amazonaws',
+  aws:         "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23FF9900'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='32' fill='white'%3EAWS%3C/text%3E%3C/svg%3E",
   gcp:         'https://cdn.simpleicons.org/googlecloud',
-  azure:       'https://cdn.simpleicons.org/microsoftazure',
+  azure:       "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230078D4'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='34' fill='white'%3EAz%3C/text%3E%3C/svg%3E",
   stripe:      'https://cdn.simpleicons.org/stripe',
   twilio:      'https://cdn.simpleicons.org/twilio',
   sendgrid:    'https://cdn.simpleicons.org/twilio',
@@ -159,7 +159,7 @@ function renderProviderGrid() {
     <button class="card" data-provider="${escapeHtml(provider.id)}" style="text-align:left;cursor:pointer;padding:14px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <img src="${getProviderIcon(provider.id)}" alt="" width="32" height="32" style="border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">
+          <img src="${getProviderIcon(provider.id)}" alt="" width="32" height="32" style="border-radius:8px;flex-shrink:0;" onerror="this.onerror=null;this.src=&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%239333EA'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='36' fill='white'%3E${encodeURIComponent(provider.label.charAt(0))}%3C/text%3E%3C/svg%3E&quot;">
           <div>
             <strong>${escapeHtml(provider.label)}</strong>
             <div class="about-text">${escapeHtml(provider.category)}</div>
@@ -192,7 +192,7 @@ async function loadConnections() {
     const statusLabel = status === 'active' ? 'Connected' : status === 'error' ? 'Error' : 'Untested';
     return `
     <div class="cron-item" style="margin-bottom:10px;">
-      <img src="${getProviderIcon(c.provider)}" alt="" width="28" height="28" style="border-radius:6px;flex-shrink:0;margin-right:8px;" onerror="this.style.display='none'">
+      <img src="${getProviderIcon(c.provider)}" alt="" width="28" height="28" style="border-radius:6px;flex-shrink:0;margin-right:8px;" onerror="this.onerror=null;this.src=&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%239333EA'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='36' fill='white'%3E${encodeURIComponent(c.provider.charAt(0).toUpperCase())}%3C/text%3E%3C/svg%3E&quot;">
       <div class="cron-info" style="flex:1;">
         <div class="cron-name"><span class="conn-status ${escapeHtml(status)}" title="${statusLabel}"></span>${escapeHtml(c.name)}</div>
         <div class="cron-schedule">${escapeHtml(c.provider)}${c.model ? ' · ' + escapeHtml(c.model) : ''} · ${escapeHtml(c.updatedAt || '')}</div>
