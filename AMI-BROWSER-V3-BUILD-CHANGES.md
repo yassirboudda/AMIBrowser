@@ -44,7 +44,7 @@ After V3, AMI Browser will have:
 17. [Approval System — Native UI](#17-approval-system--native-ui)
 18. [Parallel Browser Automations & Mission Control](#18-parallel-browser-automations--mission-control)
 19. [Session Replay & Activity Audit](#19-session-replay--activity-audit)
-20. [Component Extension System](#20-component-extension-system)
+20. [Embedded Core Extensions — Non-Removable](#20-embedded-core-extensions--non-removable)
 21. [Default Settings & Privacy Hardening](#21-default-settings--privacy-hardening)
 22. [AMI Visual Identity — UI/UX Hardcoded Overhaul](#22-ami-visual-identity--uiux-hardcoded-overhaul)
 23. [Custom Omnibox Commands & Actions](#23-custom-omnibox-commands--actions)
@@ -1524,23 +1524,35 @@ A complete timeline of everything the AI agent did during a session — pages vi
 
 ---
 
-## 20. Component Extension System
+## 20. Embedded Core Extensions — Non-Removable
 
 > **Carried from V2:** Eliminates `--load-extension` startup flags, "Developer mode" warnings, and extension URL leaks.
+> **V3 upgrade:** Extensions are **deeply embedded into the binary** — users cannot remove, disable, or uninstall them. They are part of AMI Browser itself, not optional add-ons.
 
 ### What it is
-Ship AMI's extensions as Chromium "component extensions" (like Chrome PDF Viewer, Chrome Web Store). They load automatically, can't be uninstalled (only disabled), and don't trigger developer mode warnings.
+AMI's core extensions (Shield, Hub, Rewards, TeachAnAgent, DevTools MCP, WebStore) must be **embedded into the Chromium binary** so they behave like built-in browser features, not removable extensions. Standard component extensions (like Chrome PDF Viewer) can still be disabled by users via `chrome://extensions`. That's not acceptable for AMI's core — if a user can remove AMI Hub or AMI Shield, the browser loses its identity and becomes a plain Chromium fork.
 
-### Extensions to Bundle
+### Strategy: Force-Installed + Hidden from Extension Management
 
-| Extension | ID | Purpose |
-|-----------|----|---------|
-| AMI Shield | `ami_shield` | Ad/tracker blocking |
-| AMI Hub | `ami_hub` | AI chat, integrations, skills, automations |
-| AMI WebStore | `ami_webstore` | CWS rebranding |
-| AMI Rewards | `ami_rewards` | Browsing rewards + built-in wallet |
-| TeachAnAgent | `teachanagent` | Action recording/replay |
-| DevTools MCP | `devtools_mcp` | Browser debugging for VS Code |
+**Level 1 — Component Extension registration (baseline):**
+Register via `ComponentLoader::Add()` so they auto-load, have no CRX packaging, and live inside the binary's resource bundle.
+
+**Level 2 — Force-install & block uninstall:**
+Hook into `ExtensionManagement` to mark AMI core extensions as `INSTALLATION_FORCED`. This prevents disable/uninstall from the UI and from `chrome.management.uninstall()` API calls.
+
+**Level 3 — Hide from chrome://extensions UI:**
+Filter AMI core extensions out of the extensions page listing entirely. Users don't need to see them — they're part of the browser, like the built-in PDF viewer or DevTools. Show them only in a dedicated "AMI Features" section in `chrome://settings` with on/off toggles for individual features (e.g. toggle ad blocking strength, but NOT a full remove/uninstall).
+
+### Extensions to Embed
+
+| Extension | ID | Purpose | User-Facing Control |
+|-----------|----|---------|---------------------|
+| AMI Shield | `ami_shield` | Ad/tracker blocking | Shield strength toggle in settings |
+| AMI Hub | `ami_hub` | AI chat, integrations, skills, automations | Always on (core feature) |
+| AMI WebStore | `ami_webstore` | CWS rebranding | Always on |
+| AMI Rewards | `ami_rewards` | Browsing rewards + built-in wallet | Opt-in/out in settings |
+| TeachAnAgent | `teachanagent` | Action recording/replay | Always on (core feature) |
+| DevTools MCP | `devtools_mcp` | Browser debugging for VS Code | Toggle in Developer settings |
 
 ### Implementation
 
@@ -1556,13 +1568,51 @@ void ComponentLoader::AddAMIExtensions() {
 }
 ```
 
+```cpp
+// chrome/browser/extensions/ami_extension_management.cc
+// Block disable/uninstall for AMI core extensions
+static const char* kAMICoreExtensionIds[] = {
+  "ami_shield", "ami_hub", "ami_webstore",
+  "ami_rewards", "teachanagent", "devtools_mcp"
+};
+
+bool IsAMICoreExtension(const std::string& extension_id) {
+  for (const auto* id : kAMICoreExtensionIds) {
+    if (extension_id == id) return true;
+  }
+  return false;
+}
+
+// Hook into ExtensionManagement::GetInstallationType()
+InstallationType GetInstallationType(const std::string& id) {
+  if (IsAMICoreExtension(id))
+    return INSTALLATION_FORCED;  // Cannot be disabled or uninstalled
+  return INSTALLATION_ALLOWED;   // Normal user extensions
+}
+```
+
+```cpp
+// chrome/browser/ui/webui/extensions/extensions_ui.cc
+// Filter AMI core extensions from the extensions page listing
+void ExtensionsUI::GetExtensionsList(/* ... */) {
+  for (const auto& ext : all_extensions) {
+    if (IsAMICoreExtension(ext->id()))
+      continue;  // Don't show in chrome://extensions
+    visible_extensions.push_back(ext);
+  }
+}
+```
+
 **Files to modify:**
 - `chrome/browser/extensions/component_loader.cc` — register all AMI extensions
+- New: `chrome/browser/extensions/ami_extension_management.cc/.h` — force-install logic + core extension ID list
+- `chrome/browser/extensions/extension_management.cc` — hook `IsAMICoreExtension()` into installation type checks
+- `chrome/browser/ui/webui/extensions/extensions_ui.cc` — hide AMI core from extensions page
 - `chrome/browser/resources/` — place extension source in `ami_*/` subdirs
 - `chrome/browser/resources/component_extension_resources.grd` — register resources
 - `chrome/browser/extensions/extension_install_prompt.cc` — suppress warnings for component extensions
 
-**Effort:** 4-6 hours
+**Effort:** 6-10 hours
 
 ---
 
@@ -2163,7 +2213,7 @@ All `chrome://` pages should match the dark theme. Currently they're white mater
 | `chrome://settings` | P0 (see §22.11) |
 | `chrome://history` | P0 — dark theme + Smart Search UI |
 | `chrome://downloads` | P0 — dark theme + Tidy Downloads integration |
-| `chrome://extensions` | P1 — dark theme + AMI branding |
+| `chrome://extensions` | P0 — dark theme + AMI branding + hide core AMI extensions + hide Chrome Web Store promo |
 | `chrome://bookmarks` | P1 — dark theme |
 | `chrome://flags` | P2 — dark theme |
 | `chrome://about` | P2 — AMI branding |
@@ -2173,11 +2223,19 @@ All `chrome://` pages should match the dark theme. Currently they're white mater
 - Inject a shared `ami-theme.css` into all chrome:// pages via `ChromeWebUIControllerFactory`
 - The shared CSS sets background colors, text colors, button styles, input styles, scrollbars
 
+**chrome://extensions specific changes:**
+- **Hide "Discover more extensions and themes on the Chrome Web Store" promo banner** — remove or hide the `#cws-widget` / promo element in `chrome/browser/resources/extensions/extensions.html` and the CWS promo logic in `chrome/browser/ui/webui/extensions/`
+- **Hide "Developing extensions? Stay up to date on What's New with Chrome Extension developer documentation." banner** — remove the developer callout from the extensions page footer
+- **Hide AMI core extensions** from listing (handled in §20 via `extensions_ui.cc` filtering)
+- **Replace Chrome Web Store link** with AMI WebStore link in any remaining references
+
 **Files:**
 - New: `chrome/browser/resources/ami_theme/ami_chrome_pages.css`
 - `chrome/browser/ui/webui/chrome_web_ui_controller_factory.cc` — inject shared CSS
+- `chrome/browser/resources/extensions/extensions.html` — remove CWS promo banner + dev docs banner
+- `chrome/browser/ui/webui/extensions/extensions_ui.cc` — remove CWS promo data source + dev docs
 
-**Effort:** 4-6 hours
+**Effort:** 5-8 hours
 
 ---
 
@@ -2187,13 +2245,18 @@ All `chrome://` pages should match the dark theme. Currently they're white mater
 - **Sizes:** 16, 24, 32, 48, 64, 128, 256, 512px PNG + SVG source
 - **Taskbar/dock identity:** must be instantly recognizable — purple is the key differentiator
 - **Internal page favicons:** use a mini AMI logo for all `chrome://` pages (not the default Chromium blue)
+- **Replace `chrome://resources/images/chrome_logo_dark.svg`** with AMI logo SVG — this is the Chrome logo shown on internal pages (NTP, chrome://settings, error pages). Must be replaced with AMI's logo to eliminate all Chrome branding from internal surfaces.
+- **Replace `chrome://resources/images/chrome_logo.svg`** (light variant) with AMI logo as well
 - **File type association icons:** AMI-branded icons for `.html`, `.htm`, `.pdf` (registered via `.desktop` file)
 
 **Files:**
 - `chrome/app/theme/chromium/` — replace all product icons
+- `chrome/browser/resources/images/chrome_logo_dark.svg` → replace with `ami_logo_dark.svg`
+- `chrome/browser/resources/images/chrome_logo.svg` → replace with `ami_logo.svg`
+- `ui/webui/resources/images/` — any additional Chrome logo references
 - `chrome/installer/linux/` — desktop file, MIME types
 
-**Effort:** 1-2 hours (design asset dependent)
+**Effort:** 2-3 hours (design asset dependent)
 
 ---
 
@@ -2270,7 +2333,7 @@ Small touches that reinforce the custom feel.
 | Permission prompts | `permission_prompt_bubble_base_view.cc` | 2-3h |
 | Error pages | `neterror/resources/`, `sad_tab.cc` | 3-4h |
 | chrome:// pages | `ami_chrome_pages.css` (new) | 4-6h |
-| Product icon | `chrome/app/theme/chromium/` | 1-2h |
+| Product icon + logo SVG replacements | `chrome/app/theme/chromium/`, `chrome/browser/resources/images/` | 2-3h |
 | Typography (Inter font) | `platform_font_linux.cc` | 2-3h |
 | Selection/cursor | `render_text.cc` | 1h |
 | **Total UI/UX** | | **66-97h** |
@@ -2405,9 +2468,9 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 | # | Task | Effort | Priority | Dependencies |
 |---|------|--------|----------|--------------|
 | 1 | V2 critical bug fixes (9 items) | 4-6h | P0 | None |
-| 2 | Component extension system (§20) | 4-6h | P0 | #1 |
+| 2 | Embedded core extensions — non-removable (§20) | 6-10h | P0 | #1 |
 | 3 | Default settings & privacy (§21) | 2-3h | P0 | #1 |
-| 4 | Color system + product icon (§22.1, 22.20) | 3-5h | P0 | #1 |
+| 4 | Color system + product icon + logo SVG replacements (§22.1, 22.20) | 4-6h | P0 | #1 |
 | 5 | Tab strip overhaul — pill tabs, close, hover (§22.2, 22.3) | 4-6h | P0 | #4 |
 | 6 | Omnibox — floating, rounded (§22.4) | 4-6h | P0 | #4 |
 | 7 | Toolbar — compact, custom icons (§22.5) | 3-4h | P0 | #4 |
@@ -2415,8 +2478,8 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 | 9 | Typography — bundle Inter font (§22.21) | 2-3h | P1 | #4 |
 | 10 | Chat-First NTP (§5) | 6-8h | P0 | #2 |
 
-**Day 1-3 total: ~35-51 hours**
-**Outcome:** Bug-free, visually distinct browser that looks nothing like Chrome. Custom tab shapes, floating URL bar, compact toolbar, proper font, native NTP.
+**Day 1-3 total: ~38-57 hours**
+**Outcome:** Bug-free, visually distinct browser that looks nothing like Chrome. Custom tab shapes, floating URL bar, compact toolbar, proper font, native NTP. Core extensions embedded and non-removable. Chrome logos replaced with AMI.
 
 ### Phase 2: UI Polish + Core Features (Day 4-7) — Ship V3-beta
 
@@ -2441,7 +2504,7 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 | # | Task | Effort | Priority | Dependencies |
 |---|------|--------|----------|--------------|
 | 21 | Settings page — dark, custom layout (§22.11) | 8-12h | P0 | #4 |
-| 22 | chrome:// pages dark theme (§22.19) | 4-6h | P1 | #4 |
+| 22 | chrome:// pages dark theme + hide CWS promo (§22.19) | 5-8h | P1 | #4 |
 | 23 | Find bar + permission prompts (§22.16, 22.17) | 3-5h | P2 | #4 |
 | 24 | Bookmarks bar — compact/icons-only (§22.13) | 3-4h | P2 | #4 |
 | 25 | Error pages + crash pages (§22.18) | 3-4h | P2 | #4 |
@@ -2485,11 +2548,11 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 
 | Phase | Hours | Calendar (1 person) | Calendar (2-3 people) |
 |-------|-------|--------------------|-----------------------|
-| Phase 1: Foundation + Visual Identity | 35-51h | 3-5 days | 2-3 days |
+| Phase 1: Foundation + Visual Identity | 38-57h | 3-5 days | 2-3 days |
 | Phase 2: UI Polish + Core Features | 53-74h | 5-7 days | 2-3 days |
-| Phase 3: Remaining UI + AI Features | 78-113h | 8-11 days | 3-5 days |
+| Phase 3: Remaining UI + AI Features | 79-115h | 8-11 days | 3-5 days |
 | Phase 4: Power Features + Mission Control | 146-206h | 15-20 days | 6-9 days |
-| **Total** | **312-444h** | **31-43 days** | **14-19 days** |
+| **Total** | **316-452h** | **31-43 days** | **14-19 days** |
 
 *Estimates assume Chromium source is already checked out and the build environment is ready (from V2).*
 
@@ -2547,6 +2610,9 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 | `chrome/browser/ami/activity/activity_log_service.h/.cc` | Activity log |
 | `chrome/browser/ui/webui/ami_activity/` | Activity timeline |
 | `chrome/browser/autocomplete/ami_omnibox_provider.h/.cc` | Omnibox commands |
+| `chrome/browser/extensions/ami_extension_management.h/.cc` | Force-install + hide AMI core extensions |
+| `chrome/browser/resources/images/ami_logo_dark.svg` | Replaces `chrome_logo_dark.svg` |
+| `chrome/browser/resources/images/ami_logo.svg` | Replaces `chrome_logo.svg` |
 
 ---
 
