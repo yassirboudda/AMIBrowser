@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AMI Browser",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "AMI Browser — AI command center on every new tab. Chat with agents, schedule automations, and manage connections.",
   "icons": {
     "16": "icons/icon16.png",
