@@ -378,44 +378,5 @@
   </div>
 
   <script src="hub.js"></script>
-  <script>
-    // Attempt to hide Chrome's native NTP attribution footer
-    (function hideNtpFooter() {
-      const selectors = ['#ntp-contents', '#attribution', '.ntp-bottom',
-        '#one-google-bar', 'ntp-app', '#most-visited', '.customize-buttons',
-        '[id*="customize"]', 'button[title*="Chromium"]', 'button[title*="Chrome"]',
-        '.customize-button', '[aria-label*="Customize"]', '.ntp-realbox',
-        '#realbox-container', 'iframe[src*="chrome-untrusted"]'];
-      function hide() {
-        selectors.forEach(s => {
-          document.querySelectorAll(s).forEach(el => {
-            el.style.display = 'none';
-            el.style.visibility = 'hidden';
-          });
-        });
-        // Hide any iframes Chrome injects
-        document.querySelectorAll('iframe').forEach(f => {
-          const src = f.src || '';
-          if (src.includes('chrome') || src.includes('ntp') || !src) {
-            f.style.display = 'none';
-          }
-        });
-        // Rewrite any remaining "Chromium" text in the page
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-        let node;
-        while ((node = walker.nextNode())) {
-          if (node.nodeValue && /Chromium/i.test(node.nodeValue)) {
-            node.nodeValue = node.nodeValue.replace(/Chromium/gi, 'AMI Browser');
-          }
-        }
-      }
-      hide();
-      // Re-run after Chrome finishes injecting its elements
-      [100, 300, 600, 1000, 2000, 4000].forEach(ms => setTimeout(hide, ms));
-      // Also observe for late additions
-      const obs = new MutationObserver(hide);
-      obs.observe(document.body, { childList: true, subtree: true });
-    })();
-  </script>
 </body>
 </html>
