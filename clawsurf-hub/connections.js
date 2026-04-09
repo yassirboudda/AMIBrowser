@@ -159,7 +159,7 @@ function renderProviderGrid() {
     <button class="card" data-provider="${escapeHtml(provider.id)}" style="text-align:left;cursor:pointer;padding:14px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <img src="${getProviderIcon(provider.id)}" alt="" width="32" height="32" style="border-radius:8px;flex-shrink:0;" onerror="this.onerror=null;this.src=&quot;data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%239333EA%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2736%27 fill=%27white%27%3E${encodeURIComponent(provider.label.charAt(0))}%3C/text%3E%3C/svg%3E&quot;">
+          <img src="${getProviderIcon(provider.id)}" alt="" width="32" height="32" style="border-radius:8px;flex-shrink:0;" data-fallback-label="${escapeHtml(provider.label)}">
           <div>
             <strong>${escapeHtml(provider.label)}</strong>
             <div class="about-text">${escapeHtml(provider.category)}</div>
@@ -170,6 +170,14 @@ function renderProviderGrid() {
       <p class="about-text" style="margin-top:10px;">${escapeHtml(provider.description)}</p>
     </button>
   `).join('');
+
+  // Attach image error handlers via JS (CSP forbids inline onerror)
+  gridEl.querySelectorAll('img[data-fallback-label]').forEach(img => {
+    img.addEventListener('error', function() {
+      const letter = encodeURIComponent(this.dataset.fallbackLabel.charAt(0));
+      this.src = `data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%239333EA%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2736%27 fill=%27white%27%3E${letter}%3C/text%3E%3C/svg%3E`;
+    }, { once: true });
+  });
 
   [...gridEl.querySelectorAll('[data-provider]')].forEach(button => {
     button.addEventListener('click', () => openModal(button.dataset.provider));
@@ -192,7 +200,7 @@ async function loadConnections() {
     const statusLabel = status === 'active' ? 'Connected' : status === 'error' ? 'Error' : 'Untested';
     return `
     <div class="cron-item" style="margin-bottom:10px;">
-      <img src="${getProviderIcon(c.provider)}" alt="" width="28" height="28" style="border-radius:6px;flex-shrink:0;margin-right:8px;" onerror="this.onerror=null;this.src=&quot;data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%239333EA%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2736%27 fill=%27white%27%3E${encodeURIComponent(c.provider.charAt(0).toUpperCase())}%3C/text%3E%3C/svg%3E&quot;">
+      <img src="${getProviderIcon(c.provider)}" alt="" width="28" height="28" style="border-radius:6px;flex-shrink:0;margin-right:8px;" data-fallback-label="${escapeHtml(c.provider)}">
       <div class="cron-info" style="flex:1;">
         <div class="cron-name"><span class="conn-status ${escapeHtml(status)}" title="${statusLabel}"></span>${escapeHtml(c.name)}</div>
         <div class="cron-schedule">${escapeHtml(c.provider)}${c.model ? ' · ' + escapeHtml(c.model) : ''} · ${escapeHtml(c.updatedAt || '')}</div>
@@ -205,6 +213,14 @@ async function loadConnections() {
       </button>
     </div>`;
   }).join('');
+
+  // Attach image error handlers via JS (CSP forbids inline onerror)
+  savedEl.querySelectorAll('img[data-fallback-label]').forEach(img => {
+    img.addEventListener('error', function() {
+      const letter = encodeURIComponent(this.dataset.fallbackLabel.charAt(0).toUpperCase());
+      this.src = `data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%239333EA%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2736%27 fill=%27white%27%3E${letter}%3C/text%3E%3C/svg%3E`;
+    }, { once: true });
+  });
 
   [...savedEl.querySelectorAll('[data-delete]')].forEach(btn => {
     btn.addEventListener('click', async () => {

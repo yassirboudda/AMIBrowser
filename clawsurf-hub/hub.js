@@ -184,9 +184,17 @@ function initIntegrationSlider() {
   const fallbackIcon = (label) => `data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%239333ea%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3E${encodeURIComponent(label.charAt(0))}%3C/text%3E%3C/svg%3E`;
 
   const pillHTML = SLIDER_INTEGRATIONS.map(i =>
-    `<span class="integration-pill"><img src="${i.logo}" alt="" width="16" height="16" loading="lazy" onerror="this.onerror=null;this.src='${fallbackIcon(i.label)}'">${i.label}</span>`
+    `<span class="integration-pill"><img src="${i.logo}" alt="" width="16" height="16" loading="lazy" data-fallback-label="${i.label}">${i.label}</span>`
   ).join('');
   track.innerHTML = pillHTML + pillHTML;          // duplicate for seamless loop
+
+  // Attach error handlers via JS (CSP forbids inline onerror)
+  track.querySelectorAll('img[data-fallback-label]').forEach(img => {
+    img.addEventListener('error', function() {
+      this.removeEventListener('error', arguments.callee);
+      this.src = fallbackIcon(this.dataset.fallbackLabel);
+    }, { once: true });
+  });
 
   let speed = 0.5;
   let isDragging = false;
@@ -1646,3 +1654,40 @@ chrome.storage?.onChanged?.addListener((changes) => {
     renderMemoryList(mem);
   }
 });
+
+/* ══════════════════════════════════════
+   Hide Chrome NTP attribution footer
+   (moved from inline <script> for CSP compliance)
+   ══════════════════════════════════════ */
+(function hideNtpFooter() {
+  const selectors = ['#ntp-contents', '#attribution', '.ntp-bottom',
+    '#one-google-bar', 'ntp-app', '#most-visited', '.customize-buttons',
+    '[id*="customize"]', 'button[title*="Chromium"]', 'button[title*="Chrome"]',
+    '.customize-button', '[aria-label*="Customize"]', '.ntp-realbox',
+    '#realbox-container', 'iframe[src*="chrome-untrusted"]'];
+  function hide() {
+    selectors.forEach(s => {
+      document.querySelectorAll(s).forEach(el => {
+        el.style.display = 'none';
+        el.style.visibility = 'hidden';
+      });
+    });
+    document.querySelectorAll('iframe').forEach(f => {
+      const src = f.src || '';
+      if (src.includes('chrome') || src.includes('ntp') || !src) {
+        f.style.display = 'none';
+      }
+    });
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeValue && /Chromium/i.test(node.nodeValue)) {
+        node.nodeValue = node.nodeValue.replace(/Chromium/gi, 'AMI Browser');
+      }
+    }
+  }
+  hide();
+  [100, 300, 600, 1000, 2000, 4000].forEach(ms => setTimeout(hide, ms));
+  const obs = new MutationObserver(hide);
+  obs.observe(document.body, { childList: true, subtree: true });
+})();
