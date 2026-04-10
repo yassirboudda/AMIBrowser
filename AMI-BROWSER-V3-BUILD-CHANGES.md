@@ -1436,6 +1436,815 @@ States that trigger intervention:
 
 A native notification (`chrome.notifications`) is also shown if the user is in a different tab.
 
+### 18.7 Vision AI Element Interaction
+
+> **Inspired by Skyvern's approach:** Instead of brittle CSS selectors or XPath expressions, AMI uses Vision LLMs to understand page layout and identify interactive elements visually — just like a human would. This makes automations resistant to website redesigns and capable of operating on never-seen-before websites without any pre-built selectors.
+
+**How it works:**
+
+```
+Traditional Automation (Selenium/Playwright):
+  driver.find_element(By.CSS_SELECTOR, "#add-to-cart-btn")
+  → BREAKS when the site redesigns and the ID changes
+
+AMI Vision AI Automation:
+  agent.act("Click the Add to Cart button")
+  → WORKS regardless of page layout changes — the AI sees the button visually
+```
+
+**Architecture:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Vision AI Element Pipeline                    │
+│                                                                  │
+│  1. Capture viewport screenshot (PNG)                            │
+│     ↓                                                            │
+│  2. Run DOM accessibility tree extraction (parallel)             │
+│     ↓                                                            │
+│  3. Send screenshot + accessibility tree + user prompt to LLM    │
+│     ↓                                                            │
+│  4. LLM returns: { element_id, action, coordinates, confidence } │
+│     ↓                                                            │
+│  5. Execute action via CDP on the identified element             │
+│     ↓                                                            │
+│  6. Capture post-action screenshot for verification              │
+│     ↓                                                            │
+│  7. LLM verifies action succeeded → next step or retry          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Three interaction modes (configurable per automation):**
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Vision-First** | Always use Vision LLM to locate elements | Unknown/dynamic sites |
+| **Selector-First + AI Fallback** | Try CSS/XPath first, fall back to Vision AI if selector fails | Known sites with stable selectors |
+| **Hybrid** | Use accessibility tree + Vision LLM together for maximum accuracy | Complex SPAs, shadow DOM |
+
+**Implementation:**
+
+```cpp
+// New class: VisionElementLocator
+// chrome/browser/automation/vision_element_locator.h
+class VisionElementLocator {
+ public:
+  struct ElementTarget {
+    int dom_node_id;
+    gfx::Rect bounding_box;
+    std::string element_role;        // "button", "input", "link", etc.
+    std::string accessible_name;
+    float confidence;                // 0.0 - 1.0
+  };
+
+  // Locate an element using natural language description
+  // Captures screenshot + accessibility tree, sends to LLM
+  void LocateElement(
+      content::WebContents* contents,
+      const std::string& natural_language_description,
+      base::OnceCallback<void(ElementTarget)> callback);
+
+  // Verify an action was performed correctly
+  // Captures post-action screenshot, asks LLM to confirm
+  void VerifyAction(
+      content::WebContents* contents,
+      const std::string& expected_outcome,
+      base::OnceCallback<void(bool success, std::string reason)> callback);
+
+ private:
+  // Screenshot capture at optimal resolution for LLM
+  void CaptureViewport(content::WebContents* contents, int max_width = 1280);
+
+  // Extract accessibility tree with element positions
+  void ExtractAccessibilityTree(content::WebContents* contents);
+
+  // Build the LLM prompt with screenshot + tree + instruction
+  std::string BuildVisionPrompt(
+      const std::string& screenshot_base64,
+      const std::string& accessibility_tree_json,
+      const std::string& user_instruction);
+};
+```
+
+**LLM Provider Configuration:**
+
+```json
+// In chrome://settings/ami/automations → Vision AI
+{
+  "vision_llm": {
+    "provider": "openai",           // or "anthropic", "gemini", "ollama", "openrouter"
+    "model": "gpt-4o",             // or "claude-sonnet-4-20250514", "gemini-2.5-flash", etc.
+    "api_key_source": "ami_vault",  // Uses AMI's secure key storage
+    "max_tokens": 4096,
+    "temperature": 0.1,             // Low temp for deterministic element selection
+    "timeout_ms": 10000
+  },
+  "fallback_llm": {
+    "provider": "ollama",           // Local fallback if cloud is down
+    "model": "llava:13b",
+    "endpoint": "http://localhost:11434"
+  }
+}
+```
+
+### 18.8 AI Page Commands API
+
+A high-level natural language API for browser automation — every automation uses these primitives internally. Exposed to the OpenClaw gateway, the Workflow Builder, and advanced users via the DevTools console.
+
+**Core Commands:**
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `act(prompt)` | Perform an action on the page | `act("Click the checkout button")` |
+| `extract(prompt, schema)` | Extract structured data from the page | `extract("Get all product prices", {name: str, price: float})` |
+| `validate(prompt)` | Check if a condition is true on the page | `validate("The order confirmation number is visible")` |
+| `prompt(question, schema)` | Ask the LLM a question about the current page | `prompt("What shipping options are available?", {options: str[]})` |
+| `fill(prompt)` | Fill a form using natural language | `fill("First name: John, Last name: Doe, Email: john@example.com")` |
+| `navigate(prompt)` | Navigate to a page described in natural language | `navigate("Go to the returns page")` |
+| `wait_for(prompt)` | Wait until a condition is visible on the page | `wait_for("The loading spinner has disappeared")` |
+| `download(prompt)` | Find and download a file | `download("Download the latest invoice PDF")` |
+
+**Gateway API (OpenClaw → Browser):**
+
+```json
+// POST http://localhost:18789/v1/automation/{session_id}/command
+{
+  "command": "act",
+  "prompt": "Click the 'Add to Cart' button for the first search result",
+  "options": {
+    "interaction_mode": "vision_first",
+    "screenshot_before": true,
+    "screenshot_after": true,
+    "max_retries": 3,
+    "timeout_ms": 15000
+  }
+}
+
+// Response
+{
+  "success": true,
+  "action_performed": "Clicked button element #product-1-add-to-cart",
+  "confidence": 0.94,
+  "screenshot_after": "data:image/jpeg;base64,...",
+  "duration_ms": 2340
+}
+```
+
+**Extract command with JSON schema:**
+
+```json
+// POST http://localhost:18789/v1/automation/{session_id}/command
+{
+  "command": "extract",
+  "prompt": "Extract all products from the search results",
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "rating": { "type": "number" },
+        "prime": { "type": "boolean" },
+        "url": { "type": "string" }
+      }
+    }
+  }
+}
+
+// Response
+{
+  "success": true,
+  "data": [
+    { "name": "Duracell AA 48-pack", "price": 12.99, "rating": 4.7, "prime": true, "url": "..." },
+    { "name": "Amazon Basics AA 72-pack", "price": 18.49, "rating": 4.5, "prime": true, "url": "..." },
+    { "name": "Energizer AA 24-pack", "price": 8.99, "rating": 4.6, "prime": true, "url": "..." }
+  ],
+  "confidence": 0.91,
+  "elements_found": 3
+}
+```
+
+### 18.9 Workflow Builder — Visual Block System
+
+> A drag-and-drop workflow builder at `chrome-untrusted://workflow-builder/` that lets users chain automation steps into reusable, schedulable workflows — without writing code. Similar to Skyvern's workflow system but with a visual editor native to the browser.
+
+**Block Types:**
+
+| Block | Icon | Description |
+|-------|------|-------------|
+| **Browser Action** | 🖱️ | Execute an `act()` command — click, type, scroll, hover |
+| **Data Extraction** | 📊 | Extract structured data from a page using `extract()` + JSON schema |
+| **Validation** | ✅ | Assert a condition is true using `validate()` — branch on result |
+| **Navigation** | 🧭 | Navigate to a URL or use `navigate(prompt)` for AI-driven navigation |
+| **Form Fill** | 📝 | Fill a form using `fill(prompt)` with structured input data |
+| **File Download** | 📥 | Download files from a page, auto-upload to cloud storage |
+| **For Loop** | 🔁 | Iterate over a list (from extraction, CSV, or parameter) |
+| **Conditional** | 🔀 | If/else branching based on validation result or extracted data |
+| **HTTP Request** | 🌐 | Make an API call (GET/POST/PUT/DELETE) — chain with other blocks |
+| **Code Block** | 💻 | Run custom JavaScript in a sandboxed V8 isolate |
+| **Wait / Delay** | ⏳ | Wait for a condition, a fixed time, or a page load |
+| **Email / Notify** | 📧 | Send an email or browser notification with results |
+| **Text Prompt** | 💬 | Pause workflow and ask the user a question via sidebar chat |
+| **File Parse** | 📄 | Parse CSV, JSON, or Excel file as input data for the workflow |
+| **Upload to Storage** | ☁️ | Upload files/data to S3, GCS, or local filesystem |
+
+**Visual Workflow Editor:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ ◀ ▶ 🔄  ┃  🔧 Workflow Builder — "Weekly Shopify Export"          ─ □ ✕       │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  ┌─── Block Palette ──┐  ┌─── Workflow Canvas ──────────────────────────────┐   │
+│  │                    │  │                                                   │   │
+│  │  🖱️ Browser Action │  │  ┌─────────────────────┐                         │   │
+│  │  📊 Data Extract   │  │  │ 🧭 Navigate          │                         │   │
+│  │  ✅ Validation     │  │  │ URL: shopify.com/     │                         │   │
+│  │  🧭 Navigation     │  │  │ admin/orders          │                         │   │
+│  │  📝 Form Fill      │  │  └──────────┬────────────┘                         │   │
+│  │  📥 File Download  │  │             │                                      │   │
+│  │  🔁 For Loop       │  │  ┌──────────▼────────────┐                         │   │
+│  │  🔀 Conditional    │  │  │ 📊 Extract Orders     │                         │   │
+│  │  🌐 HTTP Request   │  │  │ Schema: {order_id,    │                         │   │
+│  │  💻 Code Block     │  │  │  customer, total,     │                         │   │
+│  │  ⏳ Wait / Delay   │  │  │  status, date}        │                         │   │
+│  │  📧 Email/Notify   │  │  └──────────┬────────────┘                         │   │
+│  │  💬 Text Prompt    │  │             │                                      │   │
+│  │  📄 File Parse     │  │  ┌──────────▼────────────┐                         │   │
+│  │  ☁️ Upload Storage │  │  │ 🔀 Conditional        │                         │   │
+│  │                    │  │  │ IF orders.length > 0   │                         │   │
+│  │  ─── Variables ──  │  │  └───┬──────────────┬─────┘                         │   │
+│  │  $orders (array)   │  │      │ YES          │ NO                            │   │
+│  │  $today (string)   │  │  ┌───▼──────────┐ ┌─▼──────────┐                   │   │
+│  │  $export_path      │  │  │ 💻 Code      │ │ 📧 Notify  │                   │   │
+│  │                    │  │  │ Convert to   │ │ "No orders │                   │   │
+│  └────────────────────┘  │  │ CSV format   │ │  today"    │                   │   │
+│                          │  └──────┬───────┘ └────────────┘                   │   │
+│                          │         │                                           │   │
+│                          │  ┌──────▼───────────┐                               │   │
+│                          │  │ ☁️ Upload to S3   │                               │   │
+│                          │  │ Path: exports/    │                               │   │
+│                          │  │ {$today}.csv      │                               │   │
+│                          │  └──────┬───────────┘                               │   │
+│                          │         │                                           │   │
+│                          │  ┌──────▼───────────┐                               │   │
+│                          │  │ 📧 Email Report  │                               │   │
+│                          │  │ To: team@co.com  │                               │   │
+│                          │  │ "Export complete" │                               │   │
+│                          │  └──────────────────┘                               │   │
+│                          └──────────────────────────────────────────────────────┘   │
+│                                                                                 │
+│  ┌─── Properties Panel ─────────────────────────────────────────────────────┐   │
+│  │  Block: Data Extraction          Block ID: extract_orders                │   │
+│  │  Prompt: "Extract all orders from today's order list page"               │   │
+│  │  Output Variable: $orders                                                │   │
+│  │  Schema: { order_id: string, customer: string, total: number, ... }      │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                 │
+│  [💾 Save] [▶️ Run Now] [⏰ Schedule] [📤 Export JSON] [📥 Import]              │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Workflow Data Model:**
+
+```json
+// Stored in IndexedDB (browser-local) and optionally synced
+{
+  "workflow_id": "wf_shopify_export",
+  "name": "Weekly Shopify Export",
+  "description": "Extract this week's orders and upload CSV to S3",
+  "version": 3,
+  "created": "2025-01-15T10:00:00Z",
+  "schedule": { "cron": "0 18 * * 5", "timezone": "Europe/Berlin" },
+  "parameters": [
+    { "name": "date_range", "type": "string", "default": "this_week" }
+  ],
+  "blocks": [
+    {
+      "id": "nav_1",
+      "type": "navigation",
+      "config": { "url": "https://admin.shopify.com/orders" }
+    },
+    {
+      "id": "extract_orders",
+      "type": "data_extraction",
+      "config": {
+        "prompt": "Extract all orders from today's order list",
+        "schema": { "type": "array", "items": { "..." : "..." } },
+        "output_variable": "$orders"
+      }
+    },
+    {
+      "id": "check_orders",
+      "type": "conditional",
+      "config": {
+        "condition": "$orders.length > 0",
+        "true_branch": "convert_csv",
+        "false_branch": "notify_empty"
+      }
+    }
+  ]
+}
+```
+
+**Implementation:**
+
+```cpp
+// chrome/browser/automation/workflow_engine.h
+class WorkflowEngine {
+ public:
+  // Load and execute a saved workflow
+  void RunWorkflow(
+      const std::string& workflow_id,
+      const base::Value::Dict& parameters,
+      base::OnceCallback<void(WorkflowResult)> on_complete);
+
+  // Pause/resume/cancel a running workflow
+  void PauseWorkflow(const std::string& run_id);
+  void ResumeWorkflow(const std::string& run_id);
+  void CancelWorkflow(const std::string& run_id);
+
+  // Get execution state for Mission Control
+  WorkflowRunState GetRunState(const std::string& run_id) const;
+
+ private:
+  // Execute a single block and advance to the next
+  void ExecuteBlock(WorkflowRunContext* ctx, const WorkflowBlock& block);
+
+  // Block executors — one per block type
+  void ExecuteNavigationBlock(WorkflowRunContext* ctx, const NavigationConfig& config);
+  void ExecuteExtractionBlock(WorkflowRunContext* ctx, const ExtractionConfig& config);
+  void ExecuteConditionalBlock(WorkflowRunContext* ctx, const ConditionalConfig& config);
+  void ExecuteForLoopBlock(WorkflowRunContext* ctx, const LoopConfig& config);
+  void ExecuteCodeBlock(WorkflowRunContext* ctx, const CodeConfig& config);
+  void ExecuteHttpBlock(WorkflowRunContext* ctx, const HttpConfig& config);
+  // ... one for each block type
+
+  base::flat_map<std::string, std::unique_ptr<WorkflowRunContext>> active_runs_;
+};
+```
+
+### 18.10 Structured Data Extraction
+
+> Extract structured, typed data from any web page using a JSON schema definition. The Vision AI reads the page and returns clean, validated data — ready for export, API calls, or piping into the next workflow block.
+
+**Use cases:**
+- Scrape product listings from e-commerce sites → JSON/CSV
+- Extract invoice line items from billing portals → accounting software
+- Pull job postings from career pages → applicant tracking system
+- Gather competitor pricing → spreadsheet
+
+**Extraction flow:**
+
+```
+User defines schema:
+{
+  "products": [{
+    "name": "string",
+    "price": "number",
+    "in_stock": "boolean",
+    "url": "string"
+  }]
+}
+
+                    ┌──────────────────┐
+  Screenshot +      │   Vision LLM     │      Structured JSON
+  Accessibility  →  │  (GPT-4o /       │  →  matching the schema
+  Tree + Schema     │   Claude Sonnet)  │      + confidence scores
+                    └──────────────────┘
+
+Output:
+{
+  "products": [
+    { "name": "Widget A", "price": 29.99, "in_stock": true, "url": "/products/a" },
+    { "name": "Widget B", "price": 19.99, "in_stock": false, "url": "/products/b" }
+  ],
+  "_meta": {
+    "confidence": 0.93,
+    "elements_scanned": 47,
+    "extraction_time_ms": 1820
+  }
+}
+```
+
+**Pagination support:**
+
+The extraction engine automatically detects and follows pagination:
+
+```json
+// Extraction config with pagination
+{
+  "command": "extract",
+  "prompt": "Extract all job postings",
+  "schema": { "..." : "..." },
+  "pagination": {
+    "strategy": "auto",              // AI detects "Next" button
+    "max_pages": 10,                 // Safety limit
+    "delay_between_pages_ms": 2000   // Polite crawling
+  }
+}
+```
+
+**Export formats:**
+- JSON (default)
+- CSV
+- Excel (.xlsx)
+- Clipboard (paste into any app)
+- Direct to Connected App (Google Sheets, Notion, Airtable via §16 OAuth)
+
+### 18.11 Cron Scheduling — Recurring Automations
+
+> Schedule any automation or workflow to run on a repeating schedule. Natural language scheduling ("Every Monday at 9 AM") or cron expressions for power users.
+
+**User Experience:**
+
+```
+User: "Every Friday at 6 PM, export this week's Shopify orders to a CSV and email it to me"
+
+AMI: Got it! I've created a scheduled workflow:
+  📋 Weekly Shopify Export
+  ⏰ Every Friday at 18:00 (Europe/Berlin)
+  📧 Results emailed to you@company.com
+
+  [View in Scheduler] [Edit Workflow] [Run Now]
+```
+
+**Scheduler UI** at `chrome://settings/ami/scheduler`:
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│ AMI Scheduler                                    [+ New Schedule] │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌─ Active Schedules ─────────────────────────────────────────┐   │
+│  │                                                             │   │
+│  │  📋 Weekly Shopify Export              Every Fri 18:00      │   │
+│  │     Last run: Jan 10, 2025 — ✅ Success (47 orders)        │   │
+│  │     Next run: Jan 17, 2025 at 18:00                        │   │
+│  │     [Edit] [Run Now] [Pause] [Delete]                      │   │
+│  │                                                             │   │
+│  │  📋 Daily SAP Inbox Check              Every day 09:00      │   │
+│  │     Last run: Today 09:00 — ✅ Success (3 new messages)    │   │
+│  │     Next run: Tomorrow 09:00                               │   │
+│  │     [Edit] [Run Now] [Pause] [Delete]                      │   │
+│  │                                                             │   │
+│  │  📋 LinkedIn Job Alert Scrape          Mon/Wed/Fri 12:00   │   │
+│  │     Last run: Jan 13, 2025 — ⚠️ Partial (CAPTCHA on p3)   │   │
+│  │     Next run: Jan 15, 2025 at 12:00                        │   │
+│  │     [Edit] [Run Now] [Pause] [Delete]                      │   │
+│  │                                                             │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                   │
+│  ┌─ Run History ──────────────────────────────────────────────┐   │
+│  │  Jan 13 12:00  LinkedIn Scrape     ⚠️ Partial  23 jobs     │   │
+│  │  Jan 13 09:00  SAP Inbox Check     ✅ Success  3 msgs      │   │
+│  │  Jan 10 18:00  Shopify Export      ✅ Success  47 orders   │   │
+│  │  Jan 10 12:00  LinkedIn Scrape     ✅ Success  31 jobs     │   │
+│  │  Jan 10 09:00  SAP Inbox Check     ✅ Success  0 msgs      │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+**Architecture:**
+
+```cpp
+// chrome/browser/automation/automation_scheduler.h
+class AutomationScheduler {
+ public:
+  struct ScheduleEntry {
+    std::string schedule_id;
+    std::string workflow_id;         // Which workflow to run
+    std::string cron_expression;     // "0 18 * * 5" = Fridays at 18:00
+    std::string timezone;            // IANA timezone
+    bool enabled;
+    base::Time next_run;
+    base::Time last_run;
+    ScheduleRunResult last_result;
+  };
+
+  // Create a new scheduled automation
+  std::string CreateSchedule(
+      const std::string& workflow_id,
+      const std::string& cron_expression,
+      const std::string& timezone);
+
+  // Natural language → cron conversion (via LLM)
+  std::string ParseNaturalLanguageSchedule(
+      const std::string& natural_language);
+  // "Every weekday at 9 AM" → "0 9 * * 1-5"
+
+  // Lifecycle
+  void EnableSchedule(const std::string& schedule_id);
+  void DisableSchedule(const std::string& schedule_id);
+  void DeleteSchedule(const std::string& schedule_id);
+  void TriggerNow(const std::string& schedule_id);
+
+ private:
+  // Timer that fires at the next scheduled time
+  void OnScheduleTimerFired();
+  void ComputeNextRunTimes();
+
+  // Persisted to Preferences (survives browser restart)
+  std::vector<ScheduleEntry> schedules_;
+  base::OneShotTimer next_fire_timer_;
+};
+```
+
+**Behavior rules:**
+- Schedules persist across browser restarts (stored in Preferences)
+- If the browser is closed when a schedule fires, it runs on next launch with a "missed schedule" flag
+- Scheduled automations show in Mission Control with a 🕐 badge
+- `chrome://settings/ami/scheduler` shows all schedules, run history, and next-run times
+- Natural language scheduling powered by the same LLM used for chat — "every other Tuesday at 3 PM" just works
+
+### 18.12 AI-Powered Form Filling
+
+> Fill any web form from a natural language description or structured data. The Vision AI identifies form fields, understands their purpose, and fills them intelligently — handling dropdowns, date pickers, checkboxes, radio buttons, and multi-step forms.
+
+**Examples:**
+
+```
+act("Fill the job application form with: Name: John Doe, Email: john@example.com,
+     Phone: +1-555-0123, Position: Senior Engineer, Start date: Next Monday,
+     Salary expectation: $150,000, Cover letter: I'm excited about this role
+     because of my 8 years of experience in distributed systems...")
+
+→ AI identifies each field by looking at the form
+→ Fills text inputs, selects dropdowns, picks dates, writes multiline text
+→ Handles validation errors (re-fills if the form shows an error)
+→ Supports multi-page forms (clicks "Next" and continues filling)
+```
+
+**How field matching works:**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              Form Field Matching Pipeline                 │
+│                                                          │
+│  1. Screenshot form area                                 │
+│  2. Extract DOM form elements + labels + placeholders    │
+│  3. Build field inventory:                               │
+│     [                                                    │
+│       { "field": "input#email", "label": "Email",        │
+│         "type": "email", "placeholder": "you@..." },     │
+│       { "field": "select#country", "label": "Country",   │
+│         "type": "select", "options": ["US","UK",...] },   │
+│       { "field": "input#start_date", "label": "Start",   │
+│         "type": "date" }                                  │
+│     ]                                                    │
+│  4. Send field inventory + user's data to LLM            │
+│  5. LLM returns mapping:                                 │
+│     { "input#email": "john@example.com",                 │
+│       "select#country": "US",                            │
+│       "input#start_date": "2025-01-20" }                 │
+│  6. Execute fills via CDP (type, select, datepicker)     │
+│  7. Verify filled values match expected                  │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 18.13 Authentication & 2FA Automation
+
+> Automate login flows including two-factor authentication. AMI can handle TOTP codes, integrate with password managers, and manage session cookies — so scheduled automations can log into sites unattended.
+
+**Supported auth methods:**
+
+| Method | How AMI Handles It |
+|--------|-------------------|
+| **Username/Password** | Stored in AMI's encrypted credential vault or pulled from password manager |
+| **TOTP (Authenticator)** | Built-in TOTP generator — stores the secret key, generates codes automatically |
+| **Email 2FA** | Connects to user's email (via Connected Apps §16), reads the code, enters it |
+| **SMS 2FA** | Reads from Android Messages for Web or prompts user via notification |
+| **QR Code 2FA** | Captures QR, decodes, processes — or prompts user to scan on phone |
+| **Security Questions** | Stored answers in credential vault, matched to questions by LLM |
+
+**Password Manager Integrations:**
+
+```
+┌──────────────────────────────────────────────────────┐
+│         AMI Credential Resolution Pipeline            │
+│                                                       │
+│  Automation needs to log into: shopify.com            │
+│                                                       │
+│  1. Check AMI Credential Vault (built-in, encrypted)  │
+│     → Found? Use it.                                  │
+│                                                       │
+│  2. Check password manager integration:               │
+│     ├── Bitwarden (via CLI / API)                     │
+│     ├── 1Password (via CLI / Connect API)             │
+│     ├── LastPass (via CLI)                             │
+│     └── Custom HTTP API (user-defined endpoint)       │
+│     → Found? Use it.                                  │
+│                                                       │
+│  3. Check browser's built-in password manager         │
+│     (chrome://password-manager/)                      │
+│     → Found? Use it.                                  │
+│                                                       │
+│  4. None found → Pause automation, ask user to log in │
+│     manually via "Jump to tab" (§18.4J)               │
+└──────────────────────────────────────────────────────┘
+```
+
+**Built-in TOTP Generator:**
+
+```cpp
+// chrome/browser/automation/totp_generator.h
+class TotpGenerator {
+ public:
+  // Store a TOTP secret for a site (encrypted at rest)
+  void StoreSecret(const std::string& site_domain,
+                   const std::string& secret_base32,
+                   int period_seconds = 30,
+                   int digits = 6);
+
+  // Generate current TOTP code
+  std::string GenerateCode(const std::string& site_domain) const;
+
+  // Import from QR code image (otpauth:// URI)
+  bool ImportFromQrImage(const SkBitmap& qr_image);
+
+  // Import from otpauth:// URI directly
+  bool ImportFromUri(const std::string& otpauth_uri);
+};
+```
+
+**Session persistence:**
+
+Automation sessions can reuse existing login sessions (cookies) so the agent doesn't need to log in every time:
+
+```cpp
+// chrome/browser/automation/session_manager.h
+class AutomationSessionManager {
+ public:
+  // Check if we have a valid session for a domain
+  bool HasValidSession(const std::string& domain) const;
+
+  // Save session cookies after successful login
+  void PersistSession(const std::string& domain,
+                      const net::CookieList& cookies);
+
+  // Restore session cookies before automation starts
+  void RestoreSession(const std::string& domain,
+                      content::WebContents* contents);
+
+  // Clear sessions (user privacy control)
+  void ClearAllSessions();
+  void ClearSession(const std::string& domain);
+};
+```
+
+### 18.14 Observer Mode — Watch & Learn
+
+> The user performs a task manually while AMI watches, records every action, and auto-generates a reusable workflow. Like a macro recorder, but intelligent — it understands intent, not just clicks.
+
+**User Experience:**
+
+```
+User: "Watch me do this export process, then repeat it every week"
+
+AMI: 🔴 Recording... I'm watching your actions. Do the export as you normally would.
+
+[User navigates to Shopify → Orders → filters by date → clicks Export → selects CSV → downloads]
+
+AMI: ✅ Got it! I recorded 6 steps. Here's the workflow I generated:
+
+  1. 🧭 Navigate to shopify.com/admin/orders
+  2. 🖱️ Click "Date range" filter, select "This week"
+  3. 🖱️ Click "Export" button
+  4. 🖱️ Select "CSV for Excel" format
+  5. 🖱️ Click "Export orders"
+  6. 📥 Download the CSV file
+
+  [▶️ Run Now] [✏️ Edit Workflow] [⏰ Schedule Weekly] [💾 Save]
+```
+
+**Architecture:**
+
+```
+┌────────────────────────────────────────────────────────────┐
+│               Observer Mode Pipeline                        │
+│                                                             │
+│  1. Content script injects action listeners:                │
+│     - Click, input, select, scroll, navigation events       │
+│     - Form submissions, file uploads/downloads              │
+│     - Page load events with URL changes                     │
+│                                                             │
+│  2. Each action is recorded with context:                   │
+│     {                                                       │
+│       "action": "click",                                    │
+│       "timestamp": "2025-01-15T10:05:23Z",                  │
+│       "url": "https://admin.shopify.com/orders",            │
+│       "element": {                                          │
+│         "tag": "button",                                    │
+│         "text": "Export",                                   │
+│         "selector": "#export-btn",                          │
+│         "accessible_name": "Export orders",                 │
+│         "bounding_box": { "x": 450, "y": 120, "w": 80 }   │
+│       },                                                    │
+│       "screenshot": "base64..."                             │
+│     }                                                       │
+│                                                             │
+│  3. LLM analyzes the action sequence:                       │
+│     - Identifies intent (not just raw clicks)               │
+│     - Generalizes selectors (uses accessible names,         │
+│       not brittle CSS IDs)                                  │
+│     - Detects patterns (loops, conditionals)                │
+│     - Generates a Workflow (§18.9 block format)             │
+│                                                             │
+│  4. User reviews, edits, and saves the workflow             │
+└────────────────────────────────────────────────────────────┘
+```
+
+**Key intelligence features:**
+- **Intent detection:** If the user clicks 3 similar items in a list, the AI understands "iterate over all items" — not "click these 3 specific elements"
+- **Generalized selectors:** Uses accessible names and semantic roles instead of brittle `#id` or `.class` selectors
+- **Smart wait insertion:** Detects when the user paused (waiting for a page to load) and inserts appropriate `wait_for()` blocks
+- **Variable extraction:** If the user copies a value from one page and pastes it on another, the AI creates a variable to pass data between steps
+
+### 18.15 Prompt Caching & Action Memory
+
+> Cache LLM responses for repeated page patterns to reduce cost and increase speed. When the agent visits the same type of page again, it recalls what worked before instead of re-analyzing from scratch.
+
+**How it works:**
+
+```
+First visit to Amazon search results page:
+  → Full Vision LLM analysis: 2.1s, 4096 tokens, ~$0.03
+  → Agent learns: "Add to Cart" button location pattern, price element structure,
+    product card layout, pagination controls
+
+Subsequent visits to Amazon search results:
+  → Cache hit! Reuse element mapping: 0.1s, 0 tokens, $0.00
+  → Only re-analyze if confidence drops below threshold (layout changed)
+```
+
+**Cache architecture:**
+
+```cpp
+// chrome/browser/automation/action_memory.h
+class ActionMemory {
+ public:
+  struct PagePattern {
+    std::string domain;
+    std::string page_type_hash;        // Hash of page structure (DOM shape)
+    std::string accessibility_tree_hash;
+    base::Time last_used;
+    int use_count;
+
+    // Cached element mappings
+    base::flat_map<std::string, ElementMapping> element_cache;
+    // "Add to Cart button" → { selector: "...", bbox: {...}, confidence: 0.95 }
+  };
+
+  // Look up cached element mapping for a page + intent
+  std::optional<ElementMapping> LookupElement(
+      const std::string& domain,
+      const std::string& page_structure_hash,
+      const std::string& element_description) const;
+
+  // Store a successful mapping for future reuse
+  void CacheElement(
+      const std::string& domain,
+      const std::string& page_structure_hash,
+      const std::string& element_description,
+      const ElementMapping& mapping);
+
+  // Invalidate cache for a domain (e.g., after site redesign detected)
+  void InvalidateCache(const std::string& domain);
+
+  // Stats for user transparency
+  ActionMemoryStats GetStats() const;
+  // { cache_hits: 1247, cache_misses: 89, tokens_saved: 421000, cost_saved: $12.63 }
+
+ private:
+  // Persisted to LevelDB — survives browser restarts
+  std::unique_ptr<leveldb::DB> cache_db_;
+
+  // Max cache entries per domain (LRU eviction)
+  static constexpr int kMaxEntriesPerDomain = 500;
+};
+```
+
+**Cost savings display in Mission Control:**
+
+```
+┌───────────────────────────────────────────┐
+│ 🧠 Action Memory                          │
+│                                           │
+│ Cache hits today: 142                     │
+│ Tokens saved: 58,400 (~$1.75)            │
+│ Time saved: ~4.7 minutes                  │
+│                                           │
+│ Top cached sites:                         │
+│  amazon.com — 47 hits                     │
+│  shopify.com — 31 hits                    │
+│  linkedin.com — 28 hits                   │
+│                                           │
+│ [Clear Cache] [View Details]              │
+└───────────────────────────────────────────┘
+```
+
 ### 18.5 Files to Create / Modify
 
 | File | Purpose |
@@ -1443,15 +2252,28 @@ A native notification (`chrome.notifications`) is also shown if the user is in a
 | **New:** `chrome/browser/automation/automation_tab_manager.h/.cc` | Singleton managing all automation tabs |
 | **New:** `chrome/browser/automation/automation_session.h/.cc` | Per-task session state, progress, lifecycle |
 | **New:** `chrome/browser/automation/automation_resource_governor.h/.cc` | CPU/memory/FPS resource management |
+| **New:** `chrome/browser/automation/vision_element_locator.h/.cc` | Vision LLM-based element identification |
+| **New:** `chrome/browser/automation/page_commands.h/.cc` | AI page commands API (act, extract, validate, fill, etc.) |
+| **New:** `chrome/browser/automation/workflow_engine.h/.cc` | Workflow execution engine — block runner + state machine |
+| **New:** `chrome/browser/automation/automation_scheduler.h/.cc` | Cron scheduling service — recurring automations |
+| **New:** `chrome/browser/automation/totp_generator.h/.cc` | Built-in TOTP code generator for 2FA automation |
+| **New:** `chrome/browser/automation/session_manager.h/.cc` | Login session persistence — cookie save/restore |
+| **New:** `chrome/browser/automation/action_memory.h/.cc` | Prompt cache — LevelDB store for page pattern memory |
+| **New:** `chrome/browser/automation/observer_recorder.h/.cc` | Observer mode — action recording + workflow generation |
+| **New:** `chrome/browser/automation/form_filler.h/.cc` | AI form filling — field matching + multi-step forms |
+| **New:** `chrome/browser/automation/data_extractor.h/.cc` | Structured data extraction with pagination + schema |
 | **New:** `chrome/browser/ui/webui/mission_control/mission_control_ui.h/.cc` | WebUI controller for Mission Control |
 | **New:** `chrome/browser/ui/webui/mission_control/mission_control.mojom` | Mojo IPC for frame streaming + controls |
+| **New:** `chrome/browser/ui/webui/workflow_builder/workflow_builder_ui.h/.cc` | WebUI controller for Workflow Builder |
 | **New:** `chrome/browser/resources/mission_control/` | HTML/TS/CSS for Mission Control page |
+| **New:** `chrome/browser/resources/workflow_builder/` | HTML/TS/CSS for Workflow Builder drag-and-drop editor |
 | **Modify:** `chrome/browser/ui/tabs/tab_strip_model.cc` | Automation tab type tracking |
 | **Modify:** `chrome/browser/ui/views/tabs/tab.cc` | Automation indicator badge/ring |
 | **Modify:** `content/browser/renderer_host/render_widget_host_impl.cc` | Prevent throttling for automation tabs |
-| **Modify:** `chrome/browser/ui/webui/chrome_web_ui_configs.cc` | Register `mission-control` WebUI |
-| **Modify:** Sidebar WebUI | Compact automation status widget |
-| **Modify:** OpenClaw Gateway | Parallel session management, progress WebSocket |
+| **Modify:** `chrome/browser/ui/webui/chrome_web_ui_configs.cc` | Register `mission-control` + `workflow-builder` WebUIs |
+| **Modify:** `chrome/browser/preferences/` | Scheduler persistence + credential vault storage |
+| **Modify:** Sidebar WebUI | Compact automation status widget + Observer mode toggle |
+| **Modify:** OpenClaw Gateway | Parallel session management, progress WebSocket, page commands API |
 
 ### 18.6 Effort Estimate
 
@@ -1466,7 +2288,17 @@ A native notification (`chrome.notifications`) is also shown if the user is in a
 | Error handling / intervention flow | 4-6h |
 | Sidebar compact status widget | 3-4h |
 | Gateway parallel session management | 6-8h |
-| **Total** | **48-68h** |
+| Vision AI Element Locator + LLM integration | 10-14h |
+| AI Page Commands API (act, extract, validate, fill, etc.) | 8-12h |
+| Workflow Builder WebUI (drag-and-drop editor + canvas) | 16-24h |
+| Workflow Engine (block executor + state machine) | 10-14h |
+| Structured Data Extraction + pagination + export | 6-8h |
+| Cron Scheduler service + Settings UI | 8-10h |
+| AI Form Filler (field matching + multi-step) | 6-8h |
+| Authentication & 2FA (TOTP generator + password manager integrations) | 8-12h |
+| Observer Mode (action recorder + workflow generator) | 10-14h |
+| Prompt Cache / Action Memory (LevelDB + cache logic) | 4-6h |
+| **Total** | **135-192h** |
 
 ---
 
@@ -2419,31 +3251,41 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 
 ### AMI Browser V3 vs. All Competitors
 
-| Feature | AMI V3 | Strawberry | Arc | Brave | Edge | Chrome |
-|---------|--------|------------|-----|-------|------|--------|
-| **AI Chat Sidebar** | ✅ 50+ providers, BYO keys | ✅ Proprietary AI | ✅ ChatGPT only | ✅ Leo (limited) | ✅ Copilot (Microsoft) | ❌ |
-| **Split View** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| **Spaces/Profiles** | ✅ | ❌ | ✅ | ❌ | Workspaces | Profiles |
-| **Vertical Tabs** | ✅ Tree view | ❌ | ✅ Sidebar tabs | ✅ Recent | ✅ | ❌ |
-| **Smart History** | ✅ Local, private | ✅ CloudFlare | ❌ | ❌ | ❌ | ❌ |
-| **Link Previews** | ✅ AI summary | ❌ | ✅ 5-sec preview | ❌ | ❌ | ❌ |
-| **Tidy Titles** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| **Tidy Downloads** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| **Ad Blocker** | ✅ Network-level | ❌ | ❌ | ✅ Network-level | ❌ | ❌ |
-| **Web Capture** | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| **Reader Mode + AI** | ✅ Summary + TTS | ❌ | ❌ | ✅ Basic | ✅ Basic | ❌ |
-| **Browser Automation** | ✅ Parallel, multi-tab, Mission Control live view | ✅ Companions | ❌ | ❌ | ❌ | ❌ |
-| **Approval System** | ✅ Granular + auto-approve | ✅ Basic | ❌ | ❌ | ❌ | ❌ |
-| **Connected Apps** | ✅ Gmail, Slack, Notion, CRMs | ✅ | ❌ | ❌ | M365 only | ❌ |
-| **Built-in Rewards + Wallet** | ✅ Multi-chain | ❌ | ❌ | ✅ Basic wallet | ❌ | ❌ |
-| **Activity Audit** | ✅ Full timeline | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Session Replay** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Privacy/Telemetry** | ✅ Zero telemetry | ⚠️ CloudFlare | ⚠️ | ✅ | ❌ Heavy | ❌ Heavy |
-| **Local AI Models** | ✅ Ollama, LM Studio | ❌ Cloud only | ❌ | ❌ | ❌ | ❌ |
-| **Open Source** | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ (Chromium) |
-| **Linux** | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| **Price** | **Free** | $0-250/mo | Free | Free | Free | Free |
-| **API Key Cost** | ~$5-20/mo | Included (limited) | N/A | N/A | N/A | N/A |
+| Feature | AMI V3 | Strawberry | Arc | Brave | Edge | Chrome | Skyvern |
+|---------|--------|------------|-----|-------|------|--------|---------|
+| **AI Chat Sidebar** | ✅ 50+ providers, BYO keys | ✅ Proprietary AI | ✅ ChatGPT only | ✅ Leo (limited) | ✅ Copilot (Microsoft) | ❌ | ❌ |
+| **Split View** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Spaces/Profiles** | ✅ | ❌ | ✅ | ❌ | Workspaces | Profiles | ❌ |
+| **Vertical Tabs** | ✅ Tree view | ❌ | ✅ Sidebar tabs | ✅ Recent | ✅ | ❌ | ❌ |
+| **Smart History** | ✅ Local, private | ✅ CloudFlare | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Link Previews** | ✅ AI summary | ❌ | ✅ 5-sec preview | ❌ | ❌ | ❌ | ❌ |
+| **Tidy Titles** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Tidy Downloads** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Ad Blocker** | ✅ Network-level | ❌ | ❌ | ✅ Network-level | ❌ | ❌ | ❌ |
+| **Web Capture** | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| **Reader Mode + AI** | ✅ Summary + TTS | ❌ | ❌ | ✅ Basic | ✅ Basic | ❌ | ❌ |
+| **Browser Automation** | ✅ Parallel, multi-tab, Mission Control live view | ✅ Companions | ❌ | ❌ | ❌ | ❌ | ✅ Cloud-only |
+| **Vision AI Element Interaction** | ✅ Native, multi-LLM | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Core feature |
+| **AI Page Commands (act/extract/fill)** | ✅ Full API | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ SDK |
+| **Visual Workflow Builder** | ✅ Drag-and-drop, 15 block types | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ YAML-based (no visual editor) |
+| **Cron Scheduling** | ✅ Natural language + cron | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **Structured Data Extraction** | ✅ JSON schema + pagination | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **AI Form Filling** | ✅ Natural language | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **2FA / Auth Automation** | ✅ TOTP + password managers | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ TOTP + Bitwarden/1Password |
+| **Observer Mode (Watch & Learn)** | ✅ Record → workflow | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 Roadmap |
+| **Prompt Caching / Action Memory** | ✅ LevelDB, per-domain | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 Roadmap |
+| **Approval System** | ✅ Granular + auto-approve | ✅ Basic | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Connected Apps** | ✅ Gmail, Slack, Notion, CRMs | ✅ | ❌ | ❌ | M365 only | ❌ | ❌ |
+| **Built-in Rewards + Wallet** | ✅ Multi-chain | ❌ | ❌ | ✅ Basic wallet | ❌ | ❌ | ❌ |
+| **Activity Audit** | ✅ Full timeline | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Session Replay** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Livestream |
+| **Privacy/Telemetry** | ✅ Zero telemetry | ⚠️ CloudFlare | ⚠️ | ✅ | ❌ Heavy | ❌ Heavy | ⚠️ Cloud-hosted |
+| **Local AI Models** | ✅ Ollama, LM Studio | ❌ Cloud only | ❌ | ❌ | ❌ | ❌ | ✅ Ollama |
+| **Runs Locally (No Server)** | ✅ Everything in-browser | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ Requires Python server |
+| **Open Source** | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ (Chromium) | ✅ AGPL-3.0 |
+| **Linux** | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Price** | **Free** | $0-250/mo | Free | Free | Free | Free | Free (self-host) / $$ (cloud) |
+| **API Key Cost** | ~$5-20/mo | Included (limited) | N/A | N/A | N/A | N/A | ~$5-50/mo |
 
 ### Key Competitive Messaging
 
@@ -2458,6 +3300,9 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 
 **vs. Edge:**
 > "Edge's productivity features (vertical tabs, web capture, reader mode) without Microsoft's telemetry. Plus AI that works with any provider — not locked to Copilot. Free, open source, and private by default."
+
+**vs. Skyvern:**
+> "Skyvern is a powerful cloud-hosted automation platform — but it requires running a Python server, Docker, and Playwright. AMI puts the same Vision AI automation capabilities directly inside the browser — zero infrastructure, no server, no Docker. Plus you get a full browser with AI chat, ad blocking, rewards, and everything else. AMI is a browser with Skyvern-level automation built in, not a server you have to deploy."
 
 ---
 
@@ -2517,7 +3362,7 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 **Day 8-11 total: ~78-113 hours**
 **Outcome:** Every internal page is dark-themed and branded. Full Arc feature parity (Split View, Spaces). Smart History + approval system ready.
 
-### Phase 4: Power Features + Mission Control (Day 12-20) — Ship V3.0 Stable
+### Phase 4: Power Features + Mission Control (Day 12-25) — Ship V3.0 Stable
 
 | # | Task | Effort | Priority | Dependencies |
 |---|------|--------|----------|--------------|
@@ -2530,19 +3375,29 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 | 37 | Error handling & intervention flow (§18.4J) | 4-6h | P1 | #31 |
 | 38 | Sidebar compact automation status (§18.4H) | 3-4h | P1 | #31 |
 | 39 | Gateway parallel session management (§18.3) | 6-8h | P0 | #31 |
-| 40 | Link Previews (§8) | 8-12h | P2 | #1 |
-| 41 | Tidy Titles/Downloads (§9) | 4-6h | P2 | #1 |
-| 42 | Network-Level Ad Block (§15) | 16-20h | P1 | #1 |
-| 43 | Connected Apps / OAuth (§16) | 16-24h | P1 | #18 |
-| 44 | AMI Rewards (§11) | 20-30h | P1 | #30 |
-| 45 | Web Capture (§12) | 6-8h | P2 | #1 |
-| 46 | Smart Reader (§13) | 8-10h | P2 | #1 |
-| 47 | Activity Audit (§19) | 10-14h | P2 | #30 |
-| 48 | Omnibox Commands (§23) | 6-8h | P2 | #18 |
-| 49 | Packaging (§24) | 4-6h | P0 | All |
+| 40 | Vision AI Element Locator + LLM integration (§18.7) | 10-14h | P0 | #31, #39 |
+| 41 | AI Page Commands API — act/extract/validate/fill (§18.8) | 8-12h | P0 | #40 |
+| 42 | Workflow Builder WebUI — drag-and-drop editor (§18.9) | 16-24h | P1 | #41 |
+| 43 | Workflow Engine — block executor + state machine (§18.9) | 10-14h | P0 | #41 |
+| 44 | Structured Data Extraction + pagination + export (§18.10) | 6-8h | P1 | #41 |
+| 45 | Cron Scheduler service + Settings UI (§18.11) | 8-10h | P1 | #43 |
+| 46 | AI Form Filler — field matching + multi-step (§18.12) | 6-8h | P1 | #40 |
+| 47 | Auth & 2FA — TOTP generator + password manager (§18.13) | 8-12h | P1 | #31 |
+| 48 | Observer Mode — action recorder + workflow gen (§18.14) | 10-14h | P2 | #42, #43 |
+| 49 | Prompt Cache / Action Memory — LevelDB (§18.15) | 4-6h | P2 | #40 |
+| 50 | Link Previews (§8) | 8-12h | P2 | #1 |
+| 51 | Tidy Titles/Downloads (§9) | 4-6h | P2 | #1 |
+| 52 | Network-Level Ad Block (§15) | 16-20h | P1 | #1 |
+| 53 | Connected Apps / OAuth (§16) | 16-24h | P1 | #18 |
+| 54 | AMI Rewards (§11) | 20-30h | P1 | #30 |
+| 55 | Web Capture (§12) | 6-8h | P2 | #1 |
+| 56 | Smart Reader (§13) | 8-10h | P2 | #1 |
+| 57 | Activity Audit (§19) | 10-14h | P2 | #30 |
+| 58 | Omnibox Commands (§23) | 6-8h | P2 | #18 |
+| 59 | Packaging (§24) | 4-6h | P0 | All |
 
-**Day 12-20 total: ~146-206 hours**
-**Outcome:** Complete AMI Browser V3 with Mission Control live automation dashboard and every planned feature.
+**Day 12-25 total: ~233-330 hours**
+**Outcome:** Complete AMI Browser V3 with Vision AI automation engine, Workflow Builder, Mission Control live dashboard, cron scheduling, and every planned feature.
 
 ### Total Estimated Build Time
 
@@ -2551,8 +3406,8 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 | Phase 1: Foundation + Visual Identity | 38-57h | 3-5 days | 2-3 days |
 | Phase 2: UI Polish + Core Features | 53-74h | 5-7 days | 2-3 days |
 | Phase 3: Remaining UI + AI Features | 79-115h | 8-11 days | 3-5 days |
-| Phase 4: Power Features + Mission Control | 146-206h | 15-20 days | 6-9 days |
-| **Total** | **316-452h** | **31-43 days** | **14-19 days** |
+| Phase 4: Power Features + Mission Control | 233-330h | 20-30 days | 8-12 days |
+| **Total** | **403-576h** | **36-53 days** | **17-25 days** |
 
 *Estimates assume Chromium source is already checked out and the build environment is ready (from V2).*
 
@@ -2603,9 +3458,21 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 | `chrome/browser/automation/automation_tab_manager.h/.cc` | Automation tab lifecycle manager |
 | `chrome/browser/automation/automation_session.h/.cc` | Per-task session state + progress |
 | `chrome/browser/automation/automation_resource_governor.h/.cc` | CPU/memory/FPS resource management |
+| `chrome/browser/automation/vision_element_locator.h/.cc` | Vision LLM-based element identification |
+| `chrome/browser/automation/page_commands.h/.cc` | AI page commands API (act, extract, validate, fill, etc.) |
+| `chrome/browser/automation/workflow_engine.h/.cc` | Workflow execution engine — block runner + state machine |
+| `chrome/browser/automation/automation_scheduler.h/.cc` | Cron scheduling service — recurring automations |
+| `chrome/browser/automation/totp_generator.h/.cc` | Built-in TOTP code generator for 2FA automation |
+| `chrome/browser/automation/session_manager.h/.cc` | Login session persistence — cookie save/restore |
+| `chrome/browser/automation/action_memory.h/.cc` | Prompt cache — LevelDB store for page pattern memory |
+| `chrome/browser/automation/observer_recorder.h/.cc` | Observer mode — action recording + workflow generation |
+| `chrome/browser/automation/form_filler.h/.cc` | AI form filling — field matching + multi-step forms |
+| `chrome/browser/automation/data_extractor.h/.cc` | Structured data extraction with pagination + schema |
 | `chrome/browser/ui/webui/mission_control/mission_control_ui.h/.cc` | Mission Control WebUI controller |
 | `chrome/browser/ui/webui/mission_control/mission_control.mojom` | Mojo IPC for frame streaming |
+| `chrome/browser/ui/webui/workflow_builder/workflow_builder_ui.h/.cc` | Workflow Builder WebUI controller |
 | `chrome/browser/resources/mission_control/` | Mission Control HTML/TS/CSS assets |
+| `chrome/browser/resources/workflow_builder/` | Workflow Builder drag-and-drop editor assets |
 | **Other** | |
 | `chrome/browser/ami/activity/activity_log_service.h/.cc` | Activity log |
 | `chrome/browser/ui/webui/ami_activity/` | Activity timeline |
