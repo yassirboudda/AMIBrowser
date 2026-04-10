@@ -3251,41 +3251,41 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 
 ### AMI Browser V3 vs. All Competitors
 
-| Feature | AMI V3 | Strawberry | Arc | Brave | Edge | Chrome | Skyvern |
-|---------|--------|------------|-----|-------|------|--------|---------|
-| **AI Chat Sidebar** | ✅ 50+ providers, BYO keys | ✅ Proprietary AI | ✅ ChatGPT only | ✅ Leo (limited) | ✅ Copilot (Microsoft) | ❌ | ❌ |
-| **Split View** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Spaces/Profiles** | ✅ | ❌ | ✅ | ❌ | Workspaces | Profiles | ❌ |
-| **Vertical Tabs** | ✅ Tree view | ❌ | ✅ Sidebar tabs | ✅ Recent | ✅ | ❌ | ❌ |
-| **Smart History** | ✅ Local, private | ✅ CloudFlare | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Link Previews** | ✅ AI summary | ❌ | ✅ 5-sec preview | ❌ | ❌ | ❌ | ❌ |
-| **Tidy Titles** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Tidy Downloads** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Ad Blocker** | ✅ Network-level | ❌ | ❌ | ✅ Network-level | ❌ | ❌ | ❌ |
-| **Web Capture** | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| **Reader Mode + AI** | ✅ Summary + TTS | ❌ | ❌ | ✅ Basic | ✅ Basic | ❌ | ❌ |
-| **Browser Automation** | ✅ Parallel, multi-tab, Mission Control live view | ✅ Companions | ❌ | ❌ | ❌ | ❌ | ✅ Cloud-only |
-| **Vision AI Element Interaction** | ✅ Native, multi-LLM | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Core feature |
-| **AI Page Commands (act/extract/fill)** | ✅ Full API | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ SDK |
-| **Visual Workflow Builder** | ✅ Drag-and-drop, 15 block types | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ YAML-based (no visual editor) |
-| **Cron Scheduling** | ✅ Natural language + cron | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **Structured Data Extraction** | ✅ JSON schema + pagination | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **AI Form Filling** | ✅ Natural language | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **2FA / Auth Automation** | ✅ TOTP + password managers | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ TOTP + Bitwarden/1Password |
-| **Observer Mode (Watch & Learn)** | ✅ Record → workflow | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 Roadmap |
-| **Prompt Caching / Action Memory** | ✅ LevelDB, per-domain | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 Roadmap |
-| **Approval System** | ✅ Granular + auto-approve | ✅ Basic | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Connected Apps** | ✅ Gmail, Slack, Notion, CRMs | ✅ | ❌ | ❌ | M365 only | ❌ | ❌ |
-| **Built-in Rewards + Wallet** | ✅ Multi-chain | ❌ | ❌ | ✅ Basic wallet | ❌ | ❌ | ❌ |
-| **Activity Audit** | ✅ Full timeline | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Session Replay** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Livestream |
-| **Privacy/Telemetry** | ✅ Zero telemetry | ⚠️ CloudFlare | ⚠️ | ✅ | ❌ Heavy | ❌ Heavy | ⚠️ Cloud-hosted |
-| **Local AI Models** | ✅ Ollama, LM Studio | ❌ Cloud only | ❌ | ❌ | ❌ | ❌ | ✅ Ollama |
-| **Runs Locally (No Server)** | ✅ Everything in-browser | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ Requires Python server |
-| **Open Source** | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ (Chromium) | ✅ AGPL-3.0 |
-| **Linux** | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Price** | **Free** | $0-250/mo | Free | Free | Free | Free | Free (self-host) / $$ (cloud) |
-| **API Key Cost** | ~$5-20/mo | Included (limited) | N/A | N/A | N/A | N/A | ~$5-50/mo |
+| Feature | AMI V3 | Strawberry | Arc | Brave | Edge | Chrome |
+|---------|--------|------------|-----|-------|------|--------|
+| **AI Chat Sidebar** | ✅ 50+ providers, BYO keys | ✅ Proprietary AI | ✅ ChatGPT only | ✅ Leo (limited) | ✅ Copilot (Microsoft) | ❌ |
+| **Split View** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Spaces/Profiles** | ✅ | ❌ | ✅ | ❌ | Workspaces | Profiles |
+| **Vertical Tabs** | ✅ Tree view | ❌ | ✅ Sidebar tabs | ✅ Recent | ✅ | ❌ |
+| **Smart History** | ✅ Local, private | ✅ CloudFlare | ❌ | ❌ | ❌ | ❌ |
+| **Link Previews** | ✅ AI summary | ❌ | ✅ 5-sec preview | ❌ | ❌ | ❌ |
+| **Tidy Titles** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Tidy Downloads** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Ad Blocker** | ✅ Network-level | ❌ | ❌ | ✅ Network-level | ❌ | ❌ |
+| **Web Capture** | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Reader Mode + AI** | ✅ Summary + TTS | ❌ | ❌ | ✅ Basic | ✅ Basic | ❌ |
+| **Browser Automation** | ✅ Parallel, multi-tab, Mission Control live view | ✅ Companions | ❌ | ❌ | ❌ | ❌ |
+| **Vision AI Element Interaction** | ✅ Native, multi-LLM | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **AI Page Commands (act/extract/fill)** | ✅ Full API | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Visual Workflow Builder** | ✅ Drag-and-drop, 15 block types | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Cron Scheduling** | ✅ Natural language + cron | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Structured Data Extraction** | ✅ JSON schema + pagination | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **AI Form Filling** | ✅ Natural language | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **2FA / Auth Automation** | ✅ TOTP + password managers | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Observer Mode (Watch & Learn)** | ✅ Record → workflow | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Prompt Caching / Action Memory** | ✅ LevelDB, per-domain | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Approval System** | ✅ Granular + auto-approve | ✅ Basic | ❌ | ❌ | ❌ | ❌ |
+| **Connected Apps** | ✅ Gmail, Slack, Notion, CRMs | ✅ | ❌ | ❌ | M365 only | ❌ |
+| **Built-in Rewards + Wallet** | ✅ Multi-chain | ❌ | ❌ | ✅ Basic wallet | ❌ | ❌ |
+| **Activity Audit** | ✅ Full timeline | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Session Replay** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Privacy/Telemetry** | ✅ Zero telemetry | ⚠️ CloudFlare | ⚠️ | ✅ | ❌ Heavy | ❌ Heavy |
+| **Local AI Models** | ✅ Ollama, LM Studio | ❌ Cloud only | ❌ | ❌ | ❌ | ❌ |
+| **Runs Locally (No Server)** | ✅ Everything in-browser | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **Open Source** | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ (Chromium) |
+| **Linux** | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **Price** | **Free** | $0-250/mo | Free | Free | Free | Free |
+| **API Key Cost** | ~$5-20/mo | Included (limited) | N/A | N/A | N/A | N/A |
 
 ### Key Competitive Messaging
 
@@ -3300,9 +3300,6 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 
 **vs. Edge:**
 > "Edge's productivity features (vertical tabs, web capture, reader mode) without Microsoft's telemetry. Plus AI that works with any provider — not locked to Copilot. Free, open source, and private by default."
-
-**vs. Skyvern:**
-> "Skyvern is a powerful cloud-hosted automation platform — but it requires running a Python server, Docker, and Playwright. AMI puts the same Vision AI automation capabilities directly inside the browser — zero infrastructure, no server, no Docker. Plus you get a full browser with AI chat, ad blocking, rewards, and everything else. AMI is a browser with Skyvern-level automation built in, not a server you have to deploy."
 
 ---
 
