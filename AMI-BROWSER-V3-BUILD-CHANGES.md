@@ -51,6 +51,8 @@ After V3, AMI Browser will have:
 24. [Packaging & Distribution](#24-packaging--distribution)
 25. [Competitive Feature Matrix](#25-competitive-feature-matrix)
 26. [Build Priority & Effort Estimates](#26-build-priority--effort-estimates)
+27. [Smart Tab Switcher — Visual Carousel](#27-smart-tab-switcher--visual-carousel)
+28. [Zen-Style Compact Browsing — Multi-Row Tabs & Glance](#28-zen-style-compact-browsing--multi-row-tabs--glance)
 
 ---
 
@@ -3358,6 +3360,10 @@ GET https://updates.ami.exchange/api/check?version=3.0.1&os=linux&arch=x64&chann
 | **Built-in Rewards + Wallet** | ✅ Multi-chain | ❌ | ❌ | ✅ Basic wallet | ❌ | ❌ |
 | **Activity Audit** | ✅ Full timeline | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Session Replay** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Smart Tab Switcher** | ✅ Visual carousel + AI search | ❌ | ❌ | ❌ | ❌ | ✅ New (basic) |
+| **Multi-Row Tabs** | ✅ Zen-style, configurable | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Compact Mode** | ✅ One-line toolbar | ❌ | ✅ Minimal | ❌ | ❌ | ❌ |
+| **Tab Glance (Peek)** | ✅ Hover preview | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Privacy/Telemetry** | ✅ Zero telemetry | ⚠️ CloudFlare | ⚠️ | ✅ | ❌ Heavy | ❌ Heavy |
 | **Local AI Models** | ✅ Ollama, LM Studio | ❌ Cloud only | ❌ | ❌ | ❌ | ❌ |
 | **Runs Locally (No Server)** | ✅ Everything in-browser | ❌ | ✅ | ✅ | ✅ | ✅ |
@@ -3470,7 +3476,9 @@ GET https://updates.ami.exchange/api/check?version=3.0.1&os=linux&arch=x64&chann
 | 56 | Smart Reader (§13) | 8-10h | P2 | #1 |
 | 57 | Activity Audit (§19) | 10-14h | P2 | #30 |
 | 58 | Omnibox Commands (§23) | 6-8h | P2 | #18 |
-| 59 | Packaging & Auto-Updater (§24) | 18-28h | P0 | All |
+| 59 | Smart Tab Switcher — Visual Carousel (§27) | 10-14h | P1 | #5, #19 |
+| 60 | Zen-Style Multi-Row Tabs & Compact Mode (§28) | 14-20h | P1 | #5, #19 |
+| 61 | Packaging & Auto-Updater (§24) | 18-28h | P0 | All |
 
 **Day 12-25 total: ~233-330 hours**
 **Outcome:** Complete AMI Browser V3 with Vision AI automation engine, Workflow Builder, Mission Control live dashboard, cron scheduling, and every planned feature.
@@ -3482,8 +3490,8 @@ GET https://updates.ami.exchange/api/check?version=3.0.1&os=linux&arch=x64&chann
 | Phase 1: Foundation + Visual Identity | 38-57h | 3-5 days | 2-3 days |
 | Phase 2: UI Polish + Core Features | 53-74h | 5-7 days | 2-3 days |
 | Phase 3: Remaining UI + AI Features | 79-115h | 8-11 days | 3-5 days |
-| Phase 4: Power Features + Mission Control | 233-330h | 20-30 days | 8-12 days |
-| **Total** | **417-598h** | **38-55 days** | **18-26 days** |
+| Phase 4: Power Features + Mission Control | 257-364h | 22-33 days | 9-13 days |
+| **Total** | **441-632h** | **40-58 days** | **19-28 days** |
 
 *Estimates assume Chromium source is already checked out and the build environment is ready (from V2).*
 
@@ -3556,6 +3564,316 @@ GET https://updates.ami.exchange/api/check?version=3.0.1&os=linux&arch=x64&chann
 | `chrome/browser/extensions/ami_extension_management.h/.cc` | Force-install + hide AMI core extensions |
 | `chrome/browser/resources/images/ami_logo_dark.svg` | Replaces `chrome_logo_dark.svg` |
 | `chrome/browser/resources/images/ami_logo.svg` | Replaces `chrome_logo.svg` |
+| **Smart Tab Switcher (§27)** | |
+| `chrome/browser/ui/views/tab_switcher/tab_switcher_view.h/.cc` | Main carousel overlay view |
+| `chrome/browser/ui/views/tab_switcher/tab_switcher_card.h/.cc` | Individual tab card widget |
+| `chrome/browser/ui/views/tab_switcher/tab_switcher_search.h/.cc` | Search bar + AI matching |
+| `chrome/browser/ui/views/tab_switcher/tab_switcher_thumbnail.h/.cc` | Live thumbnail capture manager |
+| **Zen-Style Compact Browsing (§28)** | |
+| `chrome/browser/ui/views/tabs/multi_row_tab_strip.h/.cc` | Multi-row wrapping tab layout |
+| `chrome/browser/ui/views/tabs/compact_toolbar_view.h/.cc` | Merged tab + URL bar (one-line) |
+| `chrome/browser/ui/views/glance/glance_overlay.h/.cc` | Floating preview WebContents |
+| `chrome/browser/ui/views/glance/glance_controller.h/.cc` | Alt+Click handler + lifecycle |
+| `chrome/browser/ui/views/web_panel/web_panel_sidebar.h/.cc` | Sidebar panel container |
+| `chrome/browser/ui/views/web_panel/web_panel_item.h/.cc` | Individual pinned panel |
+
+---
+
+---
+
+## 27. Smart Tab Switcher — Visual Carousel
+
+> **Inspired by:** Chrome's Tab Switcher (released April 2026) — a visual card-based tab switching interface that replaces the basic `Ctrl+Tab` cycling. AMI takes it further with AI-powered tab search, grouping by context, and live thumbnails.
+
+### What it is
+A full-screen or overlay UI that shows **live thumbnail cards** of all open tabs. The user can visually browse tabs, search them by content/title, and switch instantly. Goes beyond Chrome's basic version with AI search and smart grouping.
+
+### Why it requires a binary change
+Chrome's new tab switcher is built into `chrome/browser/ui/views/tabs/`. To customize it with AMI's visual identity, add AI-powered search, and integrate with Spaces (§3), we need to modify the native UI layer.
+
+### Implementation Plan
+
+#### 27.1 Visual Carousel UI
+
+```
+╭──────────────────────────────────────────────────╮
+│  🔍 Search tabs...                    ✕ Close   │
+│                                                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │ ◉ YouTube │  │ ◉ GitHub │  │ ◉ Gmail  │       │
+│  │ ┌──────┐ │  │ ┌──────┐ │  │ ┌──────┐ │       │
+│  │ │ live │ │  │ │ live │ │  │ │ live │ │       │
+│  │ │thumb │ │  │ │thumb │ │  │ │thumb │ │       │
+│  │ └──────┘ │  │ └──────┘ │  │ └──────┘ │       │
+│  │ Kings &  │  │ AMI PR   │  │ Inbox    │       │
+│  │ Generals │  │ #142     │  │ (3 new)  │       │
+│  └──────────┘  └──────────┘  └──────────┘       │
+│                                                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │ ◉ Docs   │  │ ◉ Reddit │  │ ◉ Stack  │       │
+│  │ ...      │  │ ...      │  │ ...      │       │
+│  └──────────┘  └──────────┘  └──────────┘       │
+│                                                  │
+│  ← Use arrow keys or scroll • Ctrl+Tab to cycle  │
+╰──────────────────────────────────────────────────╯
+```
+
+**Activation:**
+- `Ctrl+Tab` (hold) → opens carousel (release on desired tab)
+- `Ctrl+Shift+Tab` → reverse direction
+- `Ctrl+Tab` (tap) → cycles to next tab (classic behavior preserved)
+- Omnibox: type `@tabs` → inline tab search
+- Three-finger swipe up on trackpad
+
+#### 27.2 Live Thumbnails
+
+- Each card shows a **live thumbnail** of the tab's current content (not a stale screenshot)
+- Thumbnails update via `chrome.tabCapture` / compositor frame capture at 2 FPS when switcher is open
+- Stale tabs (>30 min inactive) show a static screenshot with a "💤" overlay
+- Cards show: favicon, title (truncated), domain, and a close button (hover)
+
+#### 27.3 AI Tab Search
+
+- The search bar accepts natural language: "that article about machine learning"
+- Matches against tab title, URL, and **page content** (uses Smart History embeddings from §7 if available)
+- Results ranked by relevance + recency, highlighted as the user types
+- AI-powered grouping suggestions: "Group these 4 tabs into 'Research'?"
+
+#### 27.4 Smart Grouping
+
+- Tabs automatically grouped by context:
+  - **By domain** — all YouTube tabs together, all GitHub tabs together
+  - **By Space** (§3) — show space labels as section headers
+  - **By AI topic** — "Shopping", "Research", "Social", "Work"
+- User can toggle grouping: None / Domain / Space / AI Topic
+- Drag cards between groups to reorganize
+
+#### 27.5 Tab Actions in Carousel
+
+- Hover → close button (×) appears on card
+- Right-click card → context menu: Close, Pin, Mute, Duplicate, Move to Space, Split with...
+- Multi-select: `Ctrl+Click` multiple cards → batch close, batch group, batch move
+- Keyboard: `Delete` closes highlighted tab, `Enter` switches to it, `P` pins it
+
+**Files to create:**
+```
+chrome/browser/ui/views/tab_switcher/
+├── tab_switcher_view.h / .cc          — main carousel overlay view
+├── tab_switcher_card.h / .cc          — individual tab card widget
+├── tab_switcher_search.h / .cc        — search bar + AI matching
+├── tab_switcher_thumbnail.h / .cc     — live thumbnail capture manager
+```
+
+**Files to modify:**
+- `chrome/browser/ui/views/frame/browser_view.cc` — overlay switcher on keybinding
+- `chrome/browser/ui/browser_command_controller.cc` — remap Ctrl+Tab
+- `chrome/browser/ui/tabs/tab_strip_model.cc` — expose tab metadata for cards
+- `chrome/browser/ui/views/tabs/tab_strip.cc` — integrate with grouping
+
+**Effort:** 10-14 hours
+
+---
+
+## 28. Zen-Style Compact Browsing — Multi-Row Tabs & Glance
+
+> **Inspired by:** [Zen Browser](https://zen-browser.app/) — a Firefox-based browser loved for its multi-row tab bar, compact mode, split view workspaces, and "Glance" peek feature. AMI adopts the best UX ideas and improves them with AI integration.
+
+### What it is
+A set of UX enhancements inspired by Zen Browser's browsing philosophy: **see more tabs without scrolling** (multi-row tab bar), **minimize UI chrome** (compact mode), **peek at links without leaving the page** (Glance), and **workspace-aware tab containers** (enhanced Spaces). These are complementary to existing features in §2, §3, and §6.
+
+### Why it requires a binary change
+Chromium's tab strip is hardcoded to a single row. Multi-row tabs, compact toolbar collapsing, and native Glance overlays all require modifying the browser's native views layer.
+
+### Implementation Plan
+
+#### 28.1 Multi-Row Tab Bar
+
+**The problem:** When users have 30+ tabs, single-row tabs become unreadable tiny slivers. Scrolling tab strips (Chrome's approach) hide most tabs. Vertical tabs (§6) solve this but consume horizontal space.
+
+**Zen's solution:** Tabs wrap into multiple rows. AMI adopts this with intelligence.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Row 1: │ GitHub │ Gmail │ YouTube │ Stack │ Docs │ Reddit │  │
+│ Row 2: │ AMI Hub │ Figma │ Notion │ AWS │ Jira │ Slack  │  │
+│ Row 3: │ PR #42 │ MDN │ Gemini │ Deploy │ ← overflow row   │
+├─────────────────────────────────────────────────────────────┤
+│ 🔍 ← 🏠   https://github.com/yassirboudda/AMIBrowser  ☆ ⋯│
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│                    Web Content                              │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Settings:** Settings → Appearance → "Tab Layout":
+- **Single row** (Chrome default) — tabs shrink and scroll
+- **Multi-row** (Zen-style) — tabs wrap, max 2-4 rows (configurable), then scroll
+- **Vertical sidebar** (§6) — tabs on the left
+- **Hidden** — no tab bar, use tab switcher (§27) or keyboard only
+
+**Behavior:**
+- Max rows configurable: 2, 3, 4, or "auto" (grows as needed up to ¼ of window height)
+- Active tab always visible (auto-scrolls to row containing it)
+- Drag tabs between rows to reorder
+- Tab groups span across rows naturally
+- Pinned tabs always on row 1 (compact icon-only)
+- When window too narrow, rows adapt — tabs never go below a minimum width (120px)
+
+#### 28.2 Compact Mode — One-Line Toolbar
+
+**What it is:** Collapses the toolbar + tab bar into a single slim line for maximum content area. Ideal for small screens or focused browsing.
+
+```
+Normal mode:
+┌────────────────────────────────────────────────────┐
+│ │ Tab 1 │ Tab 2 │ Tab 3 │ + │                      │  ← Tab bar
+├────────────────────────────────────────────────────┤
+│ ← → 🏠 │ https://example.com          │ ⋯ ☆ ⬇ │  ← Toolbar
+├────────────────────────────────────────────────────┤
+│                 Web Content                        │
+└────────────────────────────────────────────────────┘
+
+Compact mode:
+┌────────────────────────────────────────────────────┐
+│ ◉ Tab 1 │ ◉ Tab 2 │ ← → │ example.com    │ ⋯ ☆  │  ← Combined
+├────────────────────────────────────────────────────┤
+│                 Web Content                        │
+│                 (more vertical space!)              │
+└────────────────────────────────────────────────────┘
+```
+
+**How it works:**
+- Toggle: `Ctrl+Shift+B` → compact mode (or Settings → Appearance → "Compact toolbar")
+- Tab bar and address bar merge into one row
+- Tabs show as compact pills (favicon + short title) on the left
+- URL bar occupies remaining space on the right
+- Navigation buttons (← → 🏠) show between tabs and URL
+- Toolbar buttons (extensions, menu) are icon-only, right side
+- Hover over the combined bar to see full tab titles in tooltip
+- Full URL shown on hover/focus; shows only domain normally
+
+**Auto-compact rules:**
+- Option: "Auto-compact in fullscreen" — enters compact mode when F11 pressed
+- Option: "Auto-compact on small screens" — triggers when window width < 800px
+
+#### 28.3 Glance — Peek at Links Without Leaving
+
+**What it is:** Hold `Alt` and click a link to open it in a floating preview panel overlaid on the current page. Read the content, then dismiss or promote to a full tab. No context switching.
+
+```
+┌────────────────────────────────────────────────────┐
+│                  Current Page                      │
+│                                                    │
+│    Some article with a [link]...                   │
+│                    ┌──────────────────────┐         │
+│                    │ ╳  Glance Preview    │         │
+│                    │ ─────────────────── │         │
+│                    │                     │         │
+│                    │  Preview of linked  │         │
+│                    │  page content       │         │
+│                    │  rendered live       │         │
+│                    │                     │         │
+│                    │ [Open in Tab] [Close]│         │
+│                    └──────────────────────┘         │
+│                                                    │
+└────────────────────────────────────────────────────┘
+```
+
+**Activation:**
+- `Alt + Click` on any link → opens Glance preview
+- Or right-click link → "Glance at this link"
+- Or hover a link for 1.5 seconds (optional, off by default)
+
+**Behavior:**
+- Glance panel is a floating WebContents overlay (30-50% of window width)
+- Draggable and resizable
+- Navigation inside Glance works (click links inside preview, back/forward)
+- Dismiss: `Esc`, click outside, or click ✕
+- Promote: click "Open in Tab" → becomes a full tab, Glance closes
+- Multiple Glances: up to 2 simultaneous (stacked)
+- Glance panel inherits the page's ad blocking and shield settings
+
+**AI Enhancement:**
+- If the linked page is behind a loading wall, Glance shows AI summary while loading
+- For PDF/document links, Glance uses Reader Mode (§13) inside the panel
+
+#### 28.4 Tab Containers — Visual Workspaces
+
+**What it is:** Extends Tab Groups (Chrome's built-in feature) with Zen-style visual containers. Each container gets a colored border area in the tab bar, making groups visually distinct even with many tabs open.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ ┃ ╭───────╮╭───────╮╭───────╮┃ ╭───────╮╭───────╮┃ ╭───────╮  │
+│ ┃ │GitHub ││PR#42 ││Issues │┃ │Gmail  ││Drive  │┃ │Reddit │  │
+│ ┃ ╰───────╯╰───────╯╰───────╯┃ ╰───────╯╰───────╯┃ ╰───────╯  │
+│ ┃    Work (blue)             ┃   Google (red)     ┃  Ungrouped  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- Each group has a subtle colored left border (2px) running the full height of the tab rows
+- Container colors match Tab Group colors
+- Dragging tabs between containers auto-assigns the group
+- Right-click container border → Rename, Recolor, Collapse, Close All, Move to Space
+
+#### 28.5 Sidebar Web Panels (Zen-Style)
+
+**What it is:** Pin any website as a persistent sidebar panel. Like a split view but one side is a thin, always-visible panel for tools like chat, music, notes.
+
+```
+┌─────────┬──────────────────────────────────────────┐
+│ 💬 Chat │                                          │
+│ ─────── │                                          │
+│ Slack   │          Main Web Content                │
+│ messages│                                          │
+│ ...     │                                          │
+│         │                                          │
+│ 🎵 ──── │                                          │
+│ Spotify │                                          │
+│ Now     │                                          │
+│ Playing │                                          │
+└─────────┴──────────────────────────────────────────┘
+```
+
+**How it works:**
+- Right-click any tab → "Pin as Side Panel"
+- Side panel is always visible (unless collapsed) — survives tab switching
+- Multiple panels can be stacked vertically in the sidebar
+- Click panel header to expand/collapse individual panels
+- Panel width: draggable (100px - 400px), saved per site
+- Panels load as mobile-viewport WebContents (responsive layout)
+- Pre-configured panels: AMI Chat, Music Player, Notes
+
+**Files to create:**
+```
+chrome/browser/ui/views/tabs/
+├── multi_row_tab_strip.h / .cc          — multi-row wrapping layout
+├── compact_toolbar_view.h / .cc         — merged tab+URL bar
+chrome/browser/ui/views/glance/
+├── glance_overlay.h / .cc               — floating preview WebContents
+├── glance_controller.h / .cc            — Alt+Click handler + lifecycle
+chrome/browser/ui/views/web_panel/
+├── web_panel_sidebar.h / .cc            — sidebar panel container
+├── web_panel_item.h / .cc               — individual pinned panel
+```
+
+**Files to modify:**
+- `chrome/browser/ui/views/tabs/tab_strip.cc` — multi-row layout mode
+- `chrome/browser/ui/views/frame/browser_view.cc` — compact mode + glance overlay + sidebar panels
+- `chrome/browser/ui/views/toolbar/toolbar_view.cc` — compact merging
+- `chrome/browser/ui/views/tabs/tab_group_header.cc` — container visual borders
+- `chrome/browser/ui/browser_command_controller.cc` — Ctrl+Shift+B binding
+- `chrome/browser/ui/views/frame/contents_layout_manager.cc` — sidebar panel layout
+
+**Edge cases:**
+- Multi-row + vertical tabs: mutually exclusive (settings radio)
+- Compact mode + multi-row: allowed but defaults to max 2 rows
+- Glance + Split View: Glance floats on top of the focused split side
+- Sidebar panels persist across restarts (saved in session data)
+- Sidebar panels don't count toward the tab count
+- Print / DevTools / Find: operate on the main content, not sidebar panels
+
+**Effort:** 14-20 hours (multi-row: 4-6h, compact: 3-4h, glance: 4-6h, containers: 1-2h, sidebar panels: 3-4h)
 
 ---
 
