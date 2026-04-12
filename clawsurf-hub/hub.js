@@ -263,6 +263,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   initIntegrationSlider();
   setInterval(refreshBuiltinsStatus, 12000);
 
+  // Set version tag from manifest
+  const vTag = document.getElementById('version-tag');
+  if (vTag && typeof chrome !== 'undefined' && chrome.runtime?.getManifest) {
+    vTag.textContent = chrome.runtime.getManifest().version;
+  }
+
   // AMI Tools quick access links
   const toolAgent = document.getElementById('tool-link-agent');
   if (toolAgent) toolAgent.addEventListener('click', e => { e.preventDefault(); document.getElementById('chat-input')?.focus(); document.getElementById('col-chat')?.scrollIntoView({ behavior: 'smooth' }); });
@@ -790,7 +796,7 @@ function handleBuiltinCommand(text) {
 
   if (lower === 'version' || lower === 'about') {
     hideThinking();
-    addMessage('agent', `AMI Browser v2.0\n${allSkills.length} skills | AI-powered automation workspace\nGateway: ${GW_HTTP} | WS: ${GW_WS} | MCP: ${MCP_HTTP}`);
+    addMessage('agent', `AMI Browser v${chrome.runtime.getManifest?.()?.version || '2.0'}\n${allSkills.length} skills | AI-powered automation workspace\nGateway: ${GW_HTTP} | WS: ${GW_WS} | MCP: ${MCP_HTTP}`);
     agentBusy = false;
     dom.agentStatus.textContent = 'Ready';
     return true;
@@ -1018,7 +1024,7 @@ function executeActions(actions) {
         addMessage('agent', `Status: Gateway ${dom.pillGw.classList.contains('offline') ? '❌ offline' : '✅ online'}, MCP ${dom.pillMcp.classList.contains('offline') ? '❌ offline' : '✅ online'}, Skills: ${allSkills.length}, Automations: ${crons.length}`);
         return;
       case 'version':
-        addMessage('agent', 'AMI Browser v2.0 — AI-powered automation workspace');
+        addMessage('agent', `AMI Browser v${chrome.runtime.getManifest?.()?.version || '2.0'} — AI-powered automation workspace`);
         return;
     }
 
