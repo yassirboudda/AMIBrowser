@@ -4,9 +4,29 @@
 (() => {
   if (location.protocol === 'chrome-extension:' || location.protocol === 'chrome:') return;
 
-  /* ── Dev logging ── */
+  /* ── Dev logging with visual toast ── */
   function devLog(...args) {
     console.log(`%c[AMI-fab]`, 'color:#f9a8d4;font-weight:bold', ...args);
+    showDebugToast(args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' '));
+  }
+
+  /* ── Visual debug toast (shows automation progress on screen) ── */
+  function showDebugToast(text) {
+    let container = document.getElementById('ami-debug-toasts');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'ami-debug-toasts';
+      container.style.cssText = 'position:fixed;top:8px;right:8px;z-index:2147483645;max-width:380px;pointer-events:none;display:flex;flex-direction:column;gap:4px;font-family:monospace;font-size:11px;';
+      document.documentElement.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.style.cssText = 'background:rgba(30,30,40,0.92);color:#c4b5fd;padding:6px 10px;border-radius:6px;border:1px solid rgba(139,92,246,0.3);max-width:380px;word-break:break-word;opacity:1;transition:opacity 0.5s;';
+    toast.textContent = `🤖 ${text.slice(0, 200)}`;
+    container.appendChild(toast);
+    // Auto-remove after 6 seconds
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 6000);
+    // Keep max 6 toasts
+    while (container.children.length > 6) container.firstChild.remove();
   }
 
   /* ── State ── */
@@ -94,9 +114,29 @@
     // Load skill count
     fetchSkillCount();
 
-    // Greet
-    addMiniMsg('agent', `Hi! I'm AMI Agent on this page. Ask me to extract data, fill forms, automate actions, or anything else. ${getPageSummary()}`);
+    // Load recent chat history from shared storage (synced with hub)
+    loadSharedHistory();
     focusInput();
+  }
+
+  function loadSharedHistory() {
+    if (typeof chrome === 'undefined' || !chrome.storage) return;
+    chrome.storage.local.get('ami_chat_history', data => {
+      const history = data.ami_chat_history || [];
+      // Show the last 10 messages from hub for context continuity
+      const recent = history.slice(-10);
+      if (recent.length > 0) {
+        const msgs = document.getElementById('csm-messages');
+        if (msgs) msgs.innerHTML = ''; // clear greeting
+        chatHistory = [];
+        recent.forEach(m => {
+          addMiniMsg(m.role === 'assistant' ? 'agent' : m.role, m.text, true);
+        });
+        addMiniMsg('agent', `💬 Showing last ${recent.length} messages from hub. ${getPageSummary()}`, true);
+      } else {
+        addMiniMsg('agent', `Hi! I'm AMI Agent on this page. Ask me to extract data, fill forms, automate actions, or anything else. ${getPageSummary()}`, true);
+      }
+    });
   }
 
   function hideMiniChat() {
@@ -153,7 +193,7 @@
   }
 
   /* ── Chat helpers ── */
-  function addMiniMsg(role, text) {
+  function addMiniMsg(role, text, skipStorage) {
     const msgs = document.getElementById('csm-messages');
     if (!msgs) return;
     const d = document.createElement('div');
@@ -162,6 +202,17 @@
     msgs.appendChild(d);
     msgs.scrollTop = msgs.scrollHeight;
     chatHistory.push({ role, text });
+
+    // Sync to shared storage so hub sees FAB messages too
+    if (!skipStorage && typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.get('ami_chat_history', data => {
+        const history = data.ami_chat_history || [];
+        history.push({ role: role === 'agent' ? 'agent' : role, text, ts: Date.now() });
+        // Keep last 100 messages
+        const trimmed = history.slice(-100);
+        chrome.storage.local.set({ ami_chat_history: trimmed });
+      });
+    }
   }
 
   function formatMiniText(text) {
@@ -253,7 +304,17 @@
     for (const action of actions) {
       switch (action.type) {
         case 'navigate':
-          if (action.url) window.location.href = action.url;
+          if (action.url) {
+            // Store follow-up actions before navigating (same as hub.js)
+            if (action.followUp && action.followUp.length > 0 && typeof chrome !== 'undefined' && chrome.storage) {
+              devLog('FAB: Storing followUp actions before navigate:', JSON.stringify(action.followUp));
+              chrome.storage.local.set({
+                ami_pending_actions: { actions: action.followUp, url: action.url, ts: Date.now() }
+              }, () => { window.location.href = action.url; });
+            } else {
+              window.location.href = action.url;
+            }
+          }
           break;
         case 'click': {
           const el = findElement(action.selector);
@@ -889,16 +950,18 @@
             case 'click':
               devLog(`Executing: click "${action.selector}"`);
               if (action.selector === 'first result') {
-                // Retry a few times since page might still be loading results
+                // Retry with increasing delays since SPA pages may render results late
                 let attempts = 0;
                 const tryClick = () => {
                   attempts++;
                   devLog(`clickFirstResult attempt ${attempts}`);
                   const clicked = clickFirstResult();
-                  if (!clicked && attempts < 5) {
-                    setTimeout(tryClick, 1500);
+                  if (!clicked && attempts < 10) {
+                    // Increasing delay: 1s, 1.5s, 2s, 2s, 2s...
+                    const nextDelay = attempts < 3 ? 1000 + attempts * 500 : 2000;
+                    setTimeout(tryClick, nextDelay);
                   } else if (!clicked) {
-                    devLog('Failed to click first result after 5 attempts');
+                    devLog('Failed to click first result after 10 attempts');
                   }
                 };
                 tryClick();

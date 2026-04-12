@@ -620,10 +620,71 @@ async function sendChat() {
 function handleBuiltinCommand(text) {
   const lower = text.toLowerCase().trim();
 
+  // Strip conversational preambles for better intent matching
+  const normalized = lower
+    .replace(/^(?:i\s+want\s+(?:you\s+)?to|i(?:'d|\s+would)\s+like\s+(?:you\s+)?to|can\s+you(?:\s+please)?|could\s+you(?:\s+please)?|please|hey\s+ami|ami)\s+/i, '')
+    .replace(/^(?:i\s+want\s+(?:you\s+)?to|please)\s+/i, '')
+    .trim() || lower;
+
+  // ── Play/watch/YouTube intent: handle locally with followUp (works without gateway) ──
+  // Compound: "go to youtube and play X"
+  const compoundYT = normalized.match(/^(?:go to|open|visit)\s+(?:youtube|yt)(?:\.com)?\s+(?:and|then)\s+(?:play|watch|search|find|look for|listen to)\s+(.+)/i);
+  if (compoundYT) {
+    const query = compoundYT[1].replace(/^(?:a\s+)?(?:video|song|music|track|clip)\s+(?:of|about|from|by)\s+/i, '').replace(/^(?:some|the|a|an)\s+/i, '').trim();
+    hideThinking();
+    addMessage('agent', `Searching YouTube and playing: ${query}`);
+    const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    const followUp = [{ type: 'dismiss-cookies', delay: 1500 }, { type: 'click', selector: 'first result', delay: 3000 }];
+    devLog('Compound YouTube intent — storing followUp and navigating:', ytUrl);
+    chrome.storage.local.set({ ami_pending_actions: { actions: followUp, url: ytUrl, ts: Date.now() } }, () => handleSearch(ytUrl));
+    agentBusy = false;
+    dom.agentStatus.textContent = 'Ready';
+    return true;
+  }
+
+  // Direct play/watch intent: "watch kings and generals in youtube"
+  const playMatch = normalized.match(/^(?:play|listen to|watch|put on|queue)\s+(.+?)(?:\s+(?:on|in)\s+(youtube|spotify|soundcloud|twitch|netflix))?$/i);
+  if (playMatch) {
+    const rawQuery = playMatch[1].trim();
+    const query = rawQuery.replace(/^(?:a\s+)?(?:video|song|music|track|clip)\s+(?:of|about|from|by)\s+/i, '').replace(/^(?:some|the|a|an)\s+/i, '').trim() || rawQuery;
+    const platform = (playMatch[2] || 'youtube').toLowerCase();
+    hideThinking();
+    let url;
+    switch (platform) {
+      case 'spotify': url = `https://open.spotify.com/search/${encodeURIComponent(query)}`; break;
+      case 'soundcloud': url = `https://soundcloud.com/search?q=${encodeURIComponent(query)}`; break;
+      case 'netflix': url = `https://www.netflix.com/search?q=${encodeURIComponent(query)}`; break;
+      case 'twitch': url = `https://www.twitch.tv/search?term=${encodeURIComponent(query)}`; break;
+      default: url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`; break;
+    }
+    const followUp = [{ type: 'dismiss-cookies', delay: 1500 }, { type: 'click', selector: 'first result', delay: 3000 }];
+    addMessage('agent', `Searching ${platform} for: ${query}`);
+    devLog('Play intent — storing followUp and navigating:', url);
+    chrome.storage.local.set({ ami_pending_actions: { actions: followUp, url, ts: Date.now() } }, () => handleSearch(url));
+    agentBusy = false;
+    dom.agentStatus.textContent = 'Ready';
+    return true;
+  }
+
+  // ── YouTube search: "youtube kings and generals" / "search youtube X" / "find video X" ──
+  const ytSearch = normalized.match(/^(?:youtube|search youtube|find video)\s+(.+)/i);
+  if (ytSearch) {
+    const query = ytSearch[1].trim();
+    hideThinking();
+    const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    const followUp = [{ type: 'dismiss-cookies', delay: 1500 }, { type: 'click', selector: 'first result', delay: 3000 }];
+    addMessage('agent', `Searching YouTube: ${query}`);
+    devLog('YouTube search — storing followUp and navigating:', ytUrl);
+    chrome.storage.local.set({ ami_pending_actions: { actions: followUp, url: ytUrl, ts: Date.now() } }, () => handleSearch(ytUrl));
+    agentBusy = false;
+    dom.agentStatus.textContent = 'Ready';
+    return true;
+  }
+
   // Navigate command — skip compound intents ("go to youtube and play X") so they reach the gateway
-  const compoundCheck = /^(?:go to|open|navigate to?|visit|va (?:sur|à)|ouvre|ve a|abre|geh (?:auf|zu)|vai (?:ao?|para))\s+\S+\s+(?:and|then|et|y|e|und|puis)\s+/i.test(lower);
+  const compoundCheck = /^(?:go to|open|navigate to?|visit|va (?:sur|à)|ouvre|ve a|abre|geh (?:auf|zu)|vai (?:ao?|para))\s+\S+\s+(?:and|then|et|y|e|und|puis)\s+/i.test(normalized);
   if (!compoundCheck) {
-    const navMatch = lower.match(/^(?:go to|open|navigate to|visit|va (?:sur|à)|ouvre|ve a|abre|geh (?:auf|zu)|vai (?:ao?|para))\s+(.+)/);
+    const navMatch = normalized.match(/^(?:go to|open|navigate to|visit|va (?:sur|à)|ouvre|ve a|abre|geh (?:auf|zu)|vai (?:ao?|para))\s+(.+)/);
     if (navMatch) {
       const url = navMatch[1].trim();
       hideThinking();
