@@ -773,7 +773,7 @@ const SKILLS = [
   // ─── Navigation & Browsing (15) ───
   { id: 'navigate', cat: 'Navigation', pattern: /^(?:go to|open|navigate to?|visit|browse)\s+(?!.*\b(?:and|then)\b.*(?:play|search|watch|type|click|fill|find|do))(.+)/i, desc: 'Navigate to a URL or website', handler: (m) => { let url = m[1].trim(); if (!url.startsWith('http')) url = `https://${url}`; return { reply: `Navigating to ${url}`, actions: [{ type: 'navigate', url }] }; } },
   { id: 'search-web', cat: 'Navigation', pattern: /^(?:search|google|look up|find on web|web search)\s+(.+)/i, desc: 'Search the web for a query', handler: (m) => ({ reply: `Searching: ${m[1]}`, actions: [{ type: 'navigate', url: `https://www.google.com/search?q=${encodeURIComponent(m[1])}` }] }) },
-  { id: 'search-youtube', cat: 'Navigation', pattern: /^(?:youtube|search youtube|find video|watch)\s+(.+)/i, desc: 'Search YouTube for videos', handler: (m) => ({ reply: `Searching YouTube: ${m[1]}`, actions: [{ type: 'navigate', url: `https://www.youtube.com/results?search_query=${encodeURIComponent(m[1])}` }] }) },
+  { id: 'search-youtube', cat: 'Navigation', pattern: /^(?:youtube|search youtube|find video|watch)\s+(.+)/i, desc: 'Search YouTube for videos', handler: (m) => ({ reply: `Searching YouTube: ${m[1]}`, actions: [{ type: 'navigate', url: `https://www.youtube.com/results?search_query=${encodeURIComponent(m[1])}`, followUp: [{ type: 'dismiss-cookies', delay: 1500 }, { type: 'click', selector: 'first result', delay: 3000 }] }] }) },
   { id: 'search-spotify', cat: 'Navigation', pattern: /^(?:spotify|search spotify|find song|find music)\s+(.+)/i, desc: 'Search Spotify for music', handler: (m) => ({ reply: `Searching Spotify: ${m[1]}`, actions: [{ type: 'navigate', url: `https://open.spotify.com/search/${encodeURIComponent(m[1])}` }] }) },
   { id: 'search-soundcloud', cat: 'Navigation', pattern: /^(?:soundcloud|search soundcloud)\s+(.+)/i, desc: 'Search SoundCloud', handler: (m) => ({ reply: `Searching SoundCloud: ${m[1]}`, actions: [{ type: 'navigate', url: `https://soundcloud.com/search?q=${encodeURIComponent(m[1])}` }] }) },
   { id: 'search-amazon', cat: 'Navigation', pattern: /^(?:amazon|search amazon|shop|buy)\s+(.+)/i, desc: 'Search Amazon for products', handler: (m) => ({ reply: `Searching Amazon: ${m[1]}`, actions: [{ type: 'navigate', url: `https://www.amazon.com/s?k=${encodeURIComponent(m[1])}` }] }) },
@@ -1057,13 +1057,23 @@ function buildConnectionContext() {
 async function processChat(message, config, history, pageContext) {
   const lower = (message || '').toLowerCase().trim();
 
+  // ── Intent normalization: strip conversational preambles so patterns match ──
+  // "I want to watch X on YouTube" → "watch X on YouTube"
+  // "can you please open google" → "open google"
+  const normalized = lower
+    .replace(/^(?:i\s+want\s+(?:you\s+)?to|i(?:'d|\s+would)\s+like\s+(?:you\s+)?to|can\s+you(?:\s+please)?|could\s+you(?:\s+please)?|please|hey\s+ami|ami)\s+/i, '')
+    .replace(/^(?:i\s+want\s+(?:you\s+)?to|please)\s+/i, '') // catch residual after first strip
+    .trim();
+  // Use normalized version for matching but keep original for LLM
+  const matchLower = normalized || lower;
+
   // ── Compound intent detection: "go to X and do Y" (multilingual) ──
   // EN: go to youtube and play X / open youtube and search X
   // FR: va sur youtube et mets X / ouvre youtube et cherche X
   // ES: ve a youtube y pon X / abre youtube y busca X
   // DE: geh auf youtube und spiel X
   // PT: vai ao youtube e toca X
-  const compoundMatch = lower.match(/^(?:go to|open|visit|navigate to?|va (?:sur|à)|ouvre|ve a|abre|geh (?:auf|zu)|vai (?:ao?|para)|apri|öffne)\s+(\S+?)(?:\.com|\.org|\.net|\.io)?\s+(?:and|then|to|et|y|e|und|puis)\s+(.+)$/i);
+  const compoundMatch = matchLower.match(/^(?:go to|open|visit|navigate to?|va (?:sur|à)|ouvre|ve a|abre|geh (?:auf|zu)|vai (?:ao?|para)|apri|öffne)\s+(\S+?)(?:\.com|\.org|\.net|\.io)?\s+(?:and|then|to|et|y|e|und|puis)\s+(.+)$/i);
   if (compoundMatch) {
     const site = compoundMatch[1].replace(/\.$/, '');
     const rawTask = compoundMatch[2].trim();
@@ -1114,9 +1124,13 @@ async function processChat(message, config, history, pageContext) {
   }
 
   // ── Play music / video intent (multilingual) ──
-  const playMatch = lower.match(/^(?:play|listen to|watch|put on|queue|joue|écoute|mets|mets[- ]moi|lance|regarde|pon|reproduce|escucha|toca|spiel|höre|riproduci|ascolta)\s+(.+?)(?:\s+(?:on|sur|en|auf|su)\s+(youtube|spotify|soundcloud|apple music|deezer|twitch|netflix))?$/i);
+  const playMatch = matchLower.match(/^(?:play|listen to|watch|put on|queue|joue|écoute|mets|mets[- ]moi|lance|regarde|pon|reproduce|escucha|toca|spiel|höre|riproduci|ascolta)\s+(.+?)(?:\s+(?:on|in|sur|en|auf|su)\s+(youtube|spotify|soundcloud|apple music|deezer|twitch|netflix))?$/i);
   if (playMatch) {
-    const query = playMatch[1].trim();
+    // Clean up the query: strip "a video of", "a video about", "some", etc.
+    const query = playMatch[1].trim()
+      .replace(/^(?:a\s+)?(?:video|song|music|track|clip|episode|movie)\s+(?:of|about|from|by)\s+/i, '')
+      .replace(/^(?:some|the|a|an)\s+/i, '')
+      .trim() || playMatch[1].trim();
     const platform = (playMatch[2] || '').toLowerCase();
     if (platform === 'spotify') {
       return { reply: `Searching Spotify for: ${query}`, actions: [{ type: 'navigate', url: `https://open.spotify.com/search/${encodeURIComponent(query)}` }] };
@@ -1141,7 +1155,7 @@ async function processChat(message, config, history, pageContext) {
   }
 
   // ── If we have an LLM and it's a page interaction request with context, use LLM for smart automation ──
-  const isPageAction = /click|tap|press|select|choose|pick|find.*button|find.*link|go to.*result|open.*result|\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|last|next)\b.*(?:result|link|item|button|option|entry)/i.test(lower);
+  const isPageAction = /click|tap|press|select|choose|pick|find.*button|find.*link|go to.*result|open.*result|\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|last|next)\b.*(?:result|link|item|button|option|entry)/i.test(matchLower);
   if (isPageAction && pageContext && config?.provider) {
     try {
       const contextStr = `Page: ${pageContext.title || ''}\nURL: ${pageContext.url || ''}\nHeadings: ${(pageContext.headings || []).join(', ')}\nForms: ${pageContext.forms || 0} | Links: ${pageContext.links || 0}\n${pageContext.selected ? 'Selected text: ' + pageContext.selected : ''}`;
@@ -1165,8 +1179,10 @@ async function processChat(message, config, history, pageContext) {
   }
 
   // ── Match against built-in skills registry ──
+  // Try normalized message first (with preambles stripped), fall back to original
+  const normalizedMsg = message.replace(/^(?:i\s+want\s+(?:you\s+)?to|i(?:'d|\s+would)\s+like\s+(?:you\s+)?to|can\s+you(?:\s+please)?|could\s+you(?:\s+please)?|please|hey\s+ami|ami)\s+/i, '').replace(/^(?:i\s+want\s+(?:you\s+)?to|please)\s+/i, '').trim() || message;
   for (const skill of SKILLS) {
-    const match = message.match(skill.pattern);
+    const match = normalizedMsg.match(skill.pattern) || message.match(skill.pattern);
     if (match) {
       const result = skill.handler(match);
       // For llm-task actions, forward to LLM if configured
@@ -1347,11 +1363,12 @@ CRITICAL RULES:
 1. You MUST respond ONLY with valid JSON. Never respond with plain text, markdown, or bullet lists.
 2. When the user asks you to do something in the browser (navigate, search, play, click, etc.), you MUST return actions that DO it — not text describing how to do it manually.
 3. For navigation tasks: use {"type":"navigate","url":"..."} to actually open pages.
-4. For "go to YouTube and play X": use {"type":"navigate","url":"https://www.youtube.com/results?search_query=X"} 
-5. NEVER say "I cannot interact with the browser" — you ARE the browser automation engine.
-6. For clicking: prefer CSS selectors. For nth results on search pages use "#search .g:nth-of-type(N) a".
-7. Always be helpful, proactive, and efficient. Respond in the user's language.
-8. Example response format: {"reply":"Opening YouTube to search for Carice music","actions":[{"type":"navigate","url":"https://www.youtube.com/results?search_query=Carice+music"}]}`) + buildConnectionContext();
+4. For "go to YouTube and play X": use {"type":"navigate","url":"https://www.youtube.com/results?search_query=X","followUp":[{"type":"dismiss-cookies","delay":1500},{"type":"click","selector":"first result","delay":3000}]} — the followUp tells the content script to auto-click the first video result after navigation.
+5. ALWAYS include the followUp array when navigating to a search page where the user wants to watch/play/open a specific result.
+6. NEVER say "I cannot interact with the browser" — you ARE the browser automation engine.
+7. For clicking: prefer CSS selectors. For nth results on search pages use "#search .g:nth-of-type(N) a".
+8. Always be helpful, proactive, and efficient. Respond in the user's language.
+9. Example response format: {"reply":"Opening YouTube to search for Carice music","actions":[{"type":"navigate","url":"https://www.youtube.com/results?search_query=Carice+music","followUp":[{"type":"dismiss-cookies","delay":1500},{"type":"click","selector":"first result","delay":3000}]}]}`) + buildConnectionContext();
   // Sanitize history: map 'agent' role to 'assistant' (Mistral/OpenAI only accept system/user/assistant)
   const sanitizedHistory = (history || []).slice(-10).map(m => ({
     role: m.role === 'agent' ? 'assistant' : m.role,
