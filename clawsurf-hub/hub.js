@@ -1150,13 +1150,19 @@ function loadConfig() {
   if (config.provider) dom.llmProvider.value = config.provider;
   if (config.apiKey)   dom.llmApiKey.value = config.apiKey;
   if (config.url)      dom.llmUrl.value = config.url;
-  if (config.model)    dom.llmModel.value = config.model;
   if (config.systemPrompt) dom.systemPrompt.value = config.systemPrompt;
   if (config.autoExec !== undefined) dom.cfgAutoexec.checked = config.autoExec;
   if (config.showThinking !== undefined) dom.cfgThinking.checked = config.showThinking;
   updateConfigVisibility();
-  // Auto-fill API key from saved connections if not set locally
-  syncKeyFromConnections();
+  // Auto-fill API key from saved connections if not set locally,
+  // then auto-fetch models so the dropdown is ready without clicking Refresh
+  syncKeyFromConnections().then(() => {
+    const prov = dom.llmProvider.value;
+    const key = dom.llmApiKey.value.trim();
+    if (prov && prov !== 'none' && key) {
+      refreshModels();
+    }
+  });
 }
 
 /** Pull API key from saved connections for the active provider */

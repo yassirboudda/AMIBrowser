@@ -1044,18 +1044,40 @@
       '.ytp-ad-overlay-close-button',
       'button[class*="skip-ad"]',
       '.videoAdUiSkipButton',
+      // Newer YouTube ad UI (2024+)
+      '.ytp-ad-skip-button-container button',
+      '.ytp-ad-skip-button-container',
+      'button.ytp-ad-skip-button-modern',
+      '.ytp-preview-ad__link-button',
+      '[id="skip-button:8"] button',
+      '[id^="skip-button"] button',
+      'button[id^="skip-button"]',
+      '.ytp-ad-skip-button-modern.ytp-button',
     ];
 
     function trySkipAd() {
+      // 1. Try known CSS selectors
       for (const sel of skipAdSelectors) {
         try {
           const btn = document.querySelector(sel);
           if (btn && btn.offsetParent !== null) {
-            devLog('AMI Shield: Skipping YouTube ad via', sel);
+            devLog('AMI Shield: Skipping YouTube ad via selector:', sel);
             btn.click();
             return true;
           }
-        } catch (e) { /* skip */ }
+        } catch (e) { /* invalid selector */ }
+      }
+      // 2. Text-based fallback: find any visible button/element containing "Skip"
+      //    within the YouTube player or ad overlay area
+      const playerArea = document.querySelector('.html5-video-player') || document.querySelector('#movie_player') || document.body;
+      const candidates = playerArea.querySelectorAll('button, [role="button"], a.ytp-button, div[class*="skip"], span[class*="skip"]');
+      for (const el of candidates) {
+        const txt = (el.textContent || '').trim();
+        if (/^skip/i.test(txt) && el.offsetParent !== null) {
+          devLog('AMI Shield: Skipping YouTube ad via text match:', txt);
+          el.click();
+          return true;
+        }
       }
       return false;
     }
