@@ -3234,9 +3234,88 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 ```
 
 ### Auto-Updater
-- Check `https://updates.ami.exchange/api/latest?os=linux&arch=x64`
-- Notification in `chrome://settings/help`
-- Differential updates (binary patch, not full re-download)
+
+#### Architecture Decision: GitHub Releases vs. Dedicated Backend
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **GitHub Releases (Recommended for Phase 1)** | Free hosting, CDN-backed, no server maintenance, public/private repos both work, built-in versioning via tags | No differential/delta updates (full binary re-download), no telemetry/metrics, rate limits on private repos (60 req/hr unauthenticated) |
+| **Dedicated Update Server** | Differential updates (binary patch), subscription validation, metrics/telemetry, custom update policies (staged rollouts, A/B), forced updates for critical security fixes | Requires backend infrastructure, hosting costs, server maintenance |
+| **Hybrid (Recommended for Phase 2)** | GitHub hosts the binaries (free CDN), lightweight API server handles version checks + subscription validation + delta manifest | Best of both worlds, backend is minimal (a single endpoint) |
+
+#### Phase 1: GitHub-Based Updates (MVP)
+
+**How it works:**
+1. Each release is a GitHub Release with tagged version (e.g., `v3.0.1`)
+2. Binaries (`.deb`, AppImage, `.rpm`, etc.) attached as release assets
+3. Browser checks `https://api.github.com/repos/{owner}/{repo}/releases/latest` on startup
+4. Compares `tag_name` against current version in `chrome://version`
+5. If newer version found → shows update badge on toolbar + notification in `chrome://settings/help`
+6. User clicks "Update" → downloads the asset matching their OS/arch → applies update
+
+**Update check endpoint (no backend needed):**
+```
+GET https://api.github.com/repos/yassirboudda/AMIBrowser/releases/latest
+→ { "tag_name": "v3.0.2", "assets": [{ "name": "ami-browser-3.0.2-linux-x64.deb", "browser_download_url": "..." }] }
+```
+
+**Works with private repos** using a bundled GitHub token (read-only, scoped to releases). For public repos, no token needed (5000 req/hr with token, 60/hr without).
+
+**Update UI:**
+- Toolbar badge: small green dot on AMI logo when update available
+- `chrome://settings/help` → "AMI Browser is up to date" or "Update available: v3.0.2 — [Update Now]"
+- Settings toggle: "Check for updates automatically" (default: ON)
+- Update progress bar during download
+
+**Implementation files:**
+| File | Purpose |
+|------|---------|
+| `browser/ami_update_checker.cc` | Background update check service (runs every 4 hours) |
+| `browser/ami_update_checker.h` | Header |
+| `browser/ami_update_ui.cc` | Update notification bar + toolbar badge |
+| `browser/resources/ami_update_page.html` | The `chrome://settings/help` update panel |
+
+#### Phase 2: Hybrid Backend (Subscription + Delta Updates)
+
+**When needed:** Once AMI Browser has paid tiers or needs delta updates to reduce download sizes.
+
+**Lightweight backend API (single endpoint):**
+```
+GET https://updates.ami.exchange/api/check?version=3.0.1&os=linux&arch=x64&channel=stable&license=xxx
+→ {
+    "update_available": true,
+    "version": "3.0.2",
+    "download_url": "https://github.com/.../releases/download/v3.0.2/ami-browser-3.0.2-linux-x64.deb",
+    "delta_url": "https://updates.ami.exchange/deltas/3.0.1-to-3.0.2.bsdiff",  // optional
+    "delta_size": 12400000,
+    "full_size": 148000000,
+    "mandatory": false,
+    "release_notes": "Bug fixes and performance improvements",
+    "checksum_sha256": "abc123..."
+  }
+```
+
+**The backend validates:**
+- Subscription status (free tier always gets updates; paid features gated)
+- Whether the update is mandatory (critical security fix)
+- Staged rollout percentage (e.g., 10% of users get it first)
+
+**NOTE:** The backend is NOT required for updates to work — it only adds subscription gating and delta patches. Phase 1 (GitHub-only) is fully functional for all users.
+
+#### Update Channels
+| Channel | Purpose | Source |
+|---------|---------|--------|
+| `stable` | Production releases | GitHub Releases (tagged) |
+| `beta` | Pre-release testing | GitHub Pre-releases |
+| `dev` | Nightly/canary builds | GitHub Actions artifacts |
+
+#### Security
+- All downloads verified via SHA-256 checksum
+- Release assets signed with GPG key
+- Update check uses HTTPS only
+- No auto-install without user consent (user clicks "Update Now")
+
+**Effort:** 8-12 hours (Phase 1), +6-10 hours (Phase 2 backend)
 
 ### Installer Improvements
 - Silent install mode: `./install.sh --silent`
@@ -3391,7 +3470,7 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 | 56 | Smart Reader (§13) | 8-10h | P2 | #1 |
 | 57 | Activity Audit (§19) | 10-14h | P2 | #30 |
 | 58 | Omnibox Commands (§23) | 6-8h | P2 | #18 |
-| 59 | Packaging (§24) | 4-6h | P0 | All |
+| 59 | Packaging & Auto-Updater (§24) | 18-28h | P0 | All |
 
 **Day 12-25 total: ~233-330 hours**
 **Outcome:** Complete AMI Browser V3 with Vision AI automation engine, Workflow Builder, Mission Control live dashboard, cron scheduling, and every planned feature.
@@ -3404,7 +3483,7 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 | Phase 2: UI Polish + Core Features | 53-74h | 5-7 days | 2-3 days |
 | Phase 3: Remaining UI + AI Features | 79-115h | 8-11 days | 3-5 days |
 | Phase 4: Power Features + Mission Control | 233-330h | 20-30 days | 8-12 days |
-| **Total** | **403-576h** | **36-53 days** | **17-25 days** |
+| **Total** | **417-598h** | **38-55 days** | **18-26 days** |
 
 *Estimates assume Chromium source is already checked out and the build environment is ready (from V2).*
 

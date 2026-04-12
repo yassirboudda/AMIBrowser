@@ -861,9 +861,9 @@
       const pending = data.ami_pending_actions;
       if (!pending || !pending.actions || !pending.actions.length) return;
 
-      // Expire stale pending actions (older than 30 seconds)
-      if (Date.now() - pending.ts > 30000) {
-        devLog('Pending actions expired (>30s), clearing');
+      // Expire stale pending actions (older than 60 seconds)
+      if (Date.now() - pending.ts > 60000) {
+        devLog('Pending actions expired (>60s), clearing');
         chrome.storage.local.remove('ami_pending_actions');
         return;
       }
@@ -955,11 +955,60 @@
   devLog('Content script loaded on:', location.href);
   if (document.readyState === 'complete') {
     checkPendingActions();
+    // Auto-dismiss cookie/tracking consent on every page
+    setTimeout(() => dismissCookieConsent(), 2000);
+    setTimeout(() => dismissCookieConsent(), 5000); // retry for late-rendering dialogs
   } else {
     window.addEventListener('load', () => {
       devLog('Page load complete, checking pending actions...');
       checkPendingActions();
+      // Auto-dismiss cookie/tracking consent on every page
+      setTimeout(() => dismissCookieConsent(), 2000);
+      setTimeout(() => dismissCookieConsent(), 5000); // retry for late-rendering dialogs
     });
+  }
+
+  /* ══════════════════════════════════════
+     AMI Shield: YouTube ad auto-skip
+     ══════════════════════════════════════ */
+  if (location.hostname.includes('youtube.com')) {
+    const skipAdSelectors = [
+      '.ytp-skip-ad-button',
+      '.ytp-ad-skip-button',
+      '.ytp-ad-skip-button-modern',
+      'button.ytp-skip-ad-button',
+      '.ytp-ad-skip-button-slot button',
+      '.ytp-ad-overlay-close-button',
+      'button[class*="skip-ad"]',
+      '.videoAdUiSkipButton',
+    ];
+
+    function trySkipAd() {
+      for (const sel of skipAdSelectors) {
+        try {
+          const btn = document.querySelector(sel);
+          if (btn && btn.offsetParent !== null) {
+            devLog('AMI Shield: Skipping YouTube ad via', sel);
+            btn.click();
+            return true;
+          }
+        } catch (e) { /* skip */ }
+      }
+      return false;
+    }
+
+    // Use MutationObserver to detect ad skip buttons as soon as they appear
+    const adObserver = new MutationObserver(() => trySkipAd());
+    const startObserving = () => {
+      adObserver.observe(document.documentElement, { childList: true, subtree: true });
+    };
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      startObserving();
+    } else {
+      document.addEventListener('DOMContentLoaded', startObserving);
+    }
+    // Also poll periodically as a fallback (MutationObserver can miss some SPA transitions)
+    setInterval(trySkipAd, 1500);
   }
 
 })();
