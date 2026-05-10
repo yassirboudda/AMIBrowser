@@ -5,6 +5,16 @@ A next-generation Chromium-based browser for automation, AI, and Web3 — now fu
 
 ---
 
+## Demo Video
+
+Watch the AMI Browser demo on YouTube:
+
+<a href="https://youtu.be/LX5ovtym15g">
+  <img src="https://img.youtube.com/vi/LX5ovtym15g/hqdefault.jpg" alt="AMI Browser demo video" width="720">
+</a>
+
+---
+
 ## 🚀 What is AMI Browser?
 
 **AMI Browser** is a privacy-first, automation-ready browser for Linux, designed for power users, developers, and crypto/web3 enthusiasts. It combines a hardened Chromium core with:
