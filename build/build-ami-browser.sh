@@ -9,7 +9,10 @@ set -euo pipefail
 PRODUCT_NAME="AMI Browser"
 PRODUCT_SHORT="ami-browser"
 CHROMIUM_TAG="146.0.7680.80"
-BUILD_DIR="/root/chromium-build"
+BUILD_DIR="${BUILD_DIR:-/root/chromium-build}"
+DEPOT_TOOLS_DIR="${DEPOT_TOOLS_DIR:-/root/depot_tools}"
+PACKAGE_DIR="${PACKAGE_DIR:-/root/ami-browser-linux64}"
+PREP_ONLY="${PREP_ONLY:-false}"
 NPROC=$(nproc)
 
 log() { echo ""; echo "══ [$(date '+%H:%M:%S')] $1 ══"; }
@@ -35,10 +38,16 @@ apt-get install -y -qq \
 
 # ── 2. Get depot_tools ──
 log "Step 2/8: Setting up depot_tools"
-if [[ ! -d "/root/depot_tools" ]]; then
-  git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git /root/depot_tools
+if [[ ! -d "$DEPOT_TOOLS_DIR" ]]; then
+  git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS_DIR"
 fi
-export PATH="/root/depot_tools:$PATH"
+export PATH="$DEPOT_TOOLS_DIR:$PATH"
+if [[ ! -f "$DEPOT_TOOLS_DIR/python3_bin_reldir.txt" ]]; then
+  (cd "$DEPOT_TOOLS_DIR" && ./update_depot_tools >/dev/null 2>&1) || true
+fi
+if [[ ! -f "$DEPOT_TOOLS_DIR/python3_bin_reldir.txt" ]]; then
+  (cd "$DEPOT_TOOLS_DIR" && ./ensure_bootstrap >/dev/null 2>&1) || true
+fi
 
 # ── 3. Fetch Chromium source ──
 log "Step 3/8: Fetching Chromium source"
@@ -151,23 +160,23 @@ done || true
 # ── 4h. Update help page (chrome://settings/help) ──
 echo "  → Patching settings/help page..."
 find chrome/browser/ui/webui/settings/ -name "*.cc" -o -name "*.h" | while read -r f; do
-  if grep -ql 'Chromium' "$f" 2>/dev/null; then
-    sed -i 's/Chromium/AMI Browser/g' "$f"
+  if grep -ql '"Chromium"' "$f" 2>/dev/null; then
+    sed -i 's/"Chromium"/"AMI Browser"/g' "$f"
   fi
 done
 
 # ── 4i. "Customize Chromium" → "Customize AMI Browser" in NTP/side panel ──
 echo "  → Patching NTP customize side panel..."
 find chrome/browser/ui/ chrome/browser/new_tab_page/ -name "*.cc" -o -name "*.h" -o -name "*.ts" -o -name "*.html" 2>/dev/null | while read -r f; do
-  if grep -ql 'Chromium' "$f" 2>/dev/null; then
-    sed -i 's/Chromium/AMI Browser/g' "$f"
+  if grep -ql '"Chromium"' "$f" 2>/dev/null; then
+    sed -i 's/"Chromium"/"AMI Browser"/g' "$f"
   fi
 done
 
 # Also patch the WebUI TypeScript/HTML for new tab page customize
 find chrome/browser/resources/new_tab_page/ -type f 2>/dev/null | while read -r f; do
-  if grep -ql 'Chromium' "$f" 2>/dev/null; then
-    sed -i 's/Chromium/AMI Browser/g' "$f"
+  if grep -ql '"Chromium"' "$f" 2>/dev/null; then
+    sed -i 's/"Chromium"/"AMI Browser"/g' "$f"
   fi
 done
 
@@ -197,7 +206,7 @@ done
 # ── 4m. about_flags.cc — "Chromium experiments" ──
 echo "  → Patching chrome://flags..."
 find chrome/browser/ -name "about_flags*" | while read -r f; do
-  sed -i 's/Chromium/AMI Browser/g' "$f" 2>/dev/null || true
+  sed -i 's/"Chromium"/"AMI Browser"/g' "$f" 2>/dev/null || true
 done
 
 # ── 4n. extension_system hardcoded strings ──
@@ -208,12 +217,12 @@ done || true
 
 # ── 4o. crash reporter / UMA brand ──
 find components/crash/ chrome/browser/metrics/ -name "*.cc" -print0 2>/dev/null | xargs -0 grep -l 'Chromium' 2>/dev/null | while read -r f; do
-  sed -i 's/"Chromium"/"AMI Browser"/g; s/Chromium/AMI Browser/g' "$f"
+  sed -i 's/"Chromium"/"AMI Browser"/g' "$f"
 done || true
 
 # ── 4p. Profile manager, welcome page ──
 find chrome/browser/ui/views/ -name "*.cc" -print0 | xargs -0 grep -l 'Chromium' 2>/dev/null | while read -r f; do
-  sed -i 's/"Chromium"/"AMI Browser"/g; s/Chromium/AMI Browser/g' "$f"
+  sed -i 's/"Chromium"/"AMI Browser"/g' "$f"
 done || true
 
 # ── 4q. FINAL SWEEP: any remaining "Chromium" in C++ code (aggressive) ──
@@ -294,8 +303,8 @@ for logodir in chrome/app/theme/chromium chrome/app/theme/default_100_percent/ch
     for pngfile in "$logodir"/product_logo_*.png; do
       if [[ -f "$pngfile" ]]; then
         # Extract size from filename (e.g., product_logo_128.png -> 128)
-        size=$(echo "$pngfile" | grep -oP '\d+(?=\.png)')
-        if [[ -f "/tmp/ami_logo_${size}.png" ]]; then
+        size=$(basename "$pngfile" | sed -n 's/^product_logo_\([0-9][0-9]*\)\.png$/\1/p')
+        if [[ -n "$size" && -f "/tmp/ami_logo_${size}.png" ]]; then
           cp "/tmp/ami_logo_${size}.png" "$pngfile"
           echo "    Replaced: $pngfile"
         fi
@@ -323,7 +332,7 @@ is_chrome_branded = false
 # Minimize memory usage during build
 symbol_level = 0
 blink_symbol_level = 0
-use_thin_lto = false
+use_thin_lto = true
 is_cfi = false
 chrome_pgo_phase = 0
 
@@ -340,10 +349,16 @@ ffmpeg_branding = "Chrome"
 proprietary_codecs = true
 
 # Parallel linking (56GB RAM allows ~4 concurrent link jobs)
-concurrent_links = 4
 GN
 
 gn gen "$BUILD_OUT" 2>&1 | tail -5
+
+if [[ "$PREP_ONLY" == "true" ]]; then
+  log "Prep-only mode complete — source fetched, branding applied, GN generated"
+  echo "Prepared tree: $BUILD_DIR/src"
+  echo "Build output: $BUILD_DIR/src/$BUILD_OUT"
+  exit 0
+fi
 
 # ═══════════════════════════════════════════════════════════════
 #  6. BUILD
@@ -379,7 +394,6 @@ echo "  'AMI Browser' strings in binary: $AMI_COUNT"
 # ═══════════════════════════════════════════════════════════════
 log "Step 8/8: Packaging"
 
-PACKAGE_DIR="/root/ami-browser-linux64"
 rm -rf "$PACKAGE_DIR"
 mkdir -p "$PACKAGE_DIR"
 

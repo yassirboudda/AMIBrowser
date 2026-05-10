@@ -45,28 +45,22 @@
   </header>
 
   <main id="hub-grid">
-    <section class="ami-download-social" style="margin: 24px 0 0 0; text-align: center;">
-      <a href="https://github.com/yassirboudda/AMIBrowser" class="btn-pastel" style="font-size:1.1em;padding:10px 28px;margin:0 8px 12px 0;display:inline-block;" target="_blank" rel="noopener">
-        Download AMI Browser for Linux
-      </a>
-      <div style="margin-top:10px;">
-        <a href="https://discord.ami.finance/" target="_blank" rel="noopener" style="margin:0 10px;">Discord</a>
-        <a href="https://t.me/amichain" target="_blank" rel="noopener" style="margin:0 10px;">Telegram</a>
-        <a href="https://x.com/amibrowser" target="_blank" rel="noopener" style="margin:0 10px;">X</a>
-      </div>
-    </section>
+
     <section id="col-shortcuts" class="hub-col">
-      <div class="card card-shortcuts">
+      <div class="card card-shortcuts" data-widget-id="quick-links">
         <h3 class="card-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
           Quick Links
         </h3>
         <div id="quick-links-grid"></div>
-        <button id="btn-add-shortcut" class="btn-ghost">+ Add shortcut</button>
+        <div style="display:flex;gap:8px;justify-content:center;">
+          <button id="btn-add-shortcut" class="btn-ghost">+ Add shortcut</button>
+          <button id="btn-manage-shortcuts" class="btn-ghost">✎ Manage</button>
+        </div>
       </div>
 
       <!-- ── AMI Quick Access Tools ── -->
-      <div class="card card-ami-tools">
+      <div class="card card-ami-tools" data-widget-id="ami-tools">
         <h3 class="card-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
           AMI Tools
@@ -99,7 +93,7 @@
         </div>
       </div>
 
-      <div class="card card-stats">
+      <div class="card card-stats" data-widget-id="stats">
         <h3 class="card-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           AMI Activity
@@ -139,7 +133,7 @@
         <button class="btn-pastel btn-soon" id="btn-rewards-soon" disabled>AMI Rewards — SOON</button>
       </div>
 
-      <div class="card">
+      <div class="card" data-widget-id="integrations">
         <h3 class="card-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
           Integrations
@@ -150,7 +144,7 @@
         <button id="btn-open-connections-side" class="btn-pastel">Manage connections</button>
       </div>
 
-      <div class="card card-skills">
+      <div class="card card-skills" data-widget-id="skills">
         <h3 class="card-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
           Agent Skills
@@ -165,7 +159,7 @@
     </section>
 
     <section id="col-chat" class="hub-col">
-      <div class="card card-chat">
+      <div class="card card-chat" data-widget-id="chat">
         <div class="chat-header">
           <div class="chat-header-left">
             <div class="agent-avatar logo-mark-image agent-avatar-image">
@@ -219,7 +213,7 @@
     </section>
 
     <section id="col-tools" class="hub-col">
-      <div class="card card-cron">
+      <div class="card card-cron" data-widget-id="cron">
         <h3 class="card-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           Scheduled Automation
@@ -230,7 +224,7 @@
         <button id="btn-new-cron" class="btn-pastel">+ New automation</button>
       </div>
 
-      <div class="card card-config">
+      <div class="card card-config" data-widget-id="config">
         <h3 class="card-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>
           Agent Config
@@ -241,7 +235,11 @@
 
           <div id="cfg-api-key" class="cfg-hidden">
             <label>API Key</label>
-            <input type="password" id="llm-api-key" placeholder="sk-...">
+            <div class="api-key-row">
+              <input type="password" id="llm-api-key" placeholder="Paste your API key here…" autocomplete="off" class="api-key-field">
+              <button id="btn-test-api-key" class="btn-test-key" type="button">Test</button>
+            </div>
+            <div id="api-key-test-result" class="api-key-test-result hidden"></div>
           </div>
           <div id="cfg-url" class="cfg-hidden">
             <label>Endpoint</label>
@@ -269,7 +267,7 @@
       </div>
 
       <!-- ── Persona link (full page at persona.html) ── -->
-      <div class="card card-persona-link">
+      <div class="card card-persona-link" data-widget-id="persona-link">
         <a href="persona.html" class="persona-link-row">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <div class="persona-link-text">
@@ -281,7 +279,7 @@
       </div>
 
       <!-- ── Memory viewer ── -->
-      <div class="card card-memory">
+      <div class="card card-memory" data-widget-id="memory">
         <h3 class="card-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/></svg>
           Agent Memory
@@ -357,6 +355,9 @@
         </div>
         <h4>About</h4>
         <p class="about-text">AMI Browser is an AI-powered automation workspace with built-in chat, model catalogs, secure connections, speech tools, and scheduled automation.</p>
+        <h4>Widgets</h4>
+        <div id="widget-manager" class="widget-manager-list"></div>
+        <button id="btn-reset-layout" class="btn-ghost btn-sm" style="margin-top:8px;">Reset layout</button>
       </div>
       <div class="modal-footer">
         <button class="btn-pastel" data-close>Done</button>

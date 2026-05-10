@@ -75,6 +75,7 @@ const PROVIDER_CATALOG = [
   { id: 'openrouter',    label: 'OpenRouter',           category: 'AI Provider',   kind: 'API Key',   description: 'Access 200+ models via one key' },
   { id: 'huggingface',   label: 'HuggingFace',          category: 'AI Provider',   kind: 'API Key',   description: 'Open-source models, inference API' },
   { id: 'ollama',        label: 'Ollama',               category: 'AI Provider',   kind: 'Local',     description: 'Run LLMs locally on your machine' },
+  { id: 'ollama-cloud',  label: 'Ollama Cloud',         category: 'AI Provider',   kind: 'API Key',   description: 'Ollama serverless cloud inference API' },
   { id: 'together',      label: 'Together AI',          category: 'AI Provider',   kind: 'API Key',   description: 'Fast inference for open-source models' },
   { id: 'replicate',     label: 'Replicate',            category: 'AI Provider',   kind: 'API Key',   description: 'Run ML models with a cloud API' },
   { id: 'perplexity',    label: 'Perplexity',           category: 'AI Provider',   kind: 'API Key',   description: 'Sonar Pro, online search-augmented LLM' },
@@ -772,7 +773,7 @@ function getAutoConfig() {
 const SKILLS = [
   // ─── Navigation & Browsing (15) ───
   { id: 'navigate', cat: 'Navigation', pattern: /^(?:go to|open|navigate to?|visit|browse)\s+(?!.*\b(?:and|then)\b.*(?:play|search|watch|type|click|fill|find|do))(.+)/i, desc: 'Navigate to a URL or website', handler: (m) => { let url = m[1].trim(); if (!url.startsWith('http')) url = `https://${url}`; return { reply: `Navigating to ${url}`, actions: [{ type: 'navigate', url }] }; } },
-  { id: 'search-web', cat: 'Navigation', pattern: /^(?:search|google|look up|find on web|web search)\s+(.+)/i, desc: 'Search the web for a query', handler: (m) => ({ reply: `Searching: ${m[1]}`, actions: [{ type: 'navigate', url: `https://www.google.com/search?q=${encodeURIComponent(m[1])}` }] }) },
+  { id: 'search-web', cat: 'Navigation', pattern: /^(?:search|google|look up|find on web|web search)\s+(.+)/i, desc: 'Search the web for a query', handler: (m) => ({ reply: `Searching: ${m[1]}`, actions: [{ type: 'navigate', url: `https://duckduckgo.com/?q=${encodeURIComponent(m[1])}` }] }) },
   { id: 'search-youtube', cat: 'Navigation', pattern: /^(?:youtube|search youtube|find video|watch)\s+(.+)/i, desc: 'Search YouTube for videos', handler: (m) => ({ reply: `Searching YouTube: ${m[1]}`, actions: [{ type: 'navigate', url: `https://www.youtube.com/results?search_query=${encodeURIComponent(m[1])}`, followUp: [{ type: 'dismiss-cookies', delay: 1500 }, { type: 'click', selector: 'first result', delay: 3000 }] }] }) },
   { id: 'search-spotify', cat: 'Navigation', pattern: /^(?:spotify|search spotify|find song|find music)\s+(.+)/i, desc: 'Search Spotify for music', handler: (m) => ({ reply: `Searching Spotify: ${m[1]}`, actions: [{ type: 'navigate', url: `https://open.spotify.com/search/${encodeURIComponent(m[1])}` }] }) },
   { id: 'search-soundcloud', cat: 'Navigation', pattern: /^(?:soundcloud|search soundcloud)\s+(.+)/i, desc: 'Search SoundCloud', handler: (m) => ({ reply: `Searching SoundCloud: ${m[1]}`, actions: [{ type: 'navigate', url: `https://soundcloud.com/search?q=${encodeURIComponent(m[1])}` }] }) },
@@ -834,6 +835,12 @@ const SKILLS = [
   { id: 'zoom-out', cat: 'Visual', pattern: /^zoom\s+out/i, desc: 'Zoom out on the page', handler: () => ({ reply: 'Zooming out', actions: [{ type: 'zoom', level: 0.8 }] }) },
 
   // ─── Form Prefilling (6) ───
+  { id: 'fill-days-of-week', cat: 'Forms', pattern: /(?:fill|populate|add|put|enter|write|type).*(?:days?\s+of\s+(?:the\s+)?week|all\s+(?:seven\s+)?days|weekdays?\s+and\s+weekend)/i, desc: 'Fill all 7 days of the week into spreadsheet cells', handler: () => ({ reply: 'Filling days of the week…', actions: [{ type: 'spreadsheet-fill-values', values: ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] }] }) },
+  { id: 'fill-working-days', cat: 'Forms', pattern: /(?:fill|populate|add|put|enter|write|type).*(?:working\s+days?|weekdays?(?!\s+and))\b/i, desc: 'Fill working days (Mon–Fri) into spreadsheet cells', handler: () => ({ reply: 'Filling working days…', actions: [{ type: 'spreadsheet-fill-values', values: ['Monday','Tuesday','Wednesday','Thursday','Friday'] }] }) },
+  { id: 'fill-months', cat: 'Forms', pattern: /(?:fill|populate|add|put|enter|write|type).*(?:all\s+)?(?:(?:12|twelve)\s+)?months?\b/i, desc: 'Fill all 12 months into spreadsheet cells', handler: () => ({ reply: 'Filling months of the year…', actions: [{ type: 'spreadsheet-fill-values', values: ['January','February','March','April','May','June','July','August','September','October','November','December'] }] }) },
+  { id: 'fill-numbers', cat: 'Forms', pattern: /(?:fill|populate|add|put|enter|write|type).*numbers?\s+(?:from\s+)?(\d+)\s+(?:to|through|until|-)\s+(\d+)/i, desc: 'Fill a numeric range into spreadsheet cells', handler: (m) => { const a=parseInt(m[1],10),b=parseInt(m[2],10); if(isNaN(a)||isNaN(b)||Math.abs(b-a)>5000) return null; const vals=[]; for(let i=Math.min(a,b);i<=Math.max(a,b);i++) vals.push(i); return { reply: `Filling numbers ${a}–${b}…`, actions: [{ type: 'spreadsheet-fill-values', values: vals }] }; } },
+  { id: 'spreadsheet-fill-dates', cat: 'Forms', pattern: /^(?:fill|complete|populate)\s+(?:this\s+)?(?:table|sheet|spreadsheet|google\s*sheet|google\s*sheets|excel)(?:\s+with\s+dates?)?\s+from\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\-]\d{1,2}[\-]\d{1,2})\s+(?:to|until|through|-)\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\-]\d{1,2}[\-]\d{1,2})\s*$/i, desc: 'Fill spreadsheet cells with an inclusive date range', handler: (m) => ({ reply: `Filling spreadsheet dates from ${m[1]} to ${m[2]}…`, actions: [{ type: 'spreadsheet-fill-dates', startDate: m[1], endDate: m[2] }] }) },
+  { id: 'spreadsheet-dates-short', cat: 'Forms', pattern: /^(?:dates?|fill\s+dates?)\s+from\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\-]\d{1,2}[\-]\d{1,2})\s+(?:to|until|through|-)\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\-]\d{1,2}[\-]\d{1,2})\s*$/i, desc: 'Fill date range in current spreadsheet selection', handler: (m) => ({ reply: `Filling dates from ${m[1]} to ${m[2]}…`, actions: [{ type: 'spreadsheet-fill-dates', startDate: m[1], endDate: m[2] }] }) },
   { id: 'fill-form', cat: 'Forms', pattern: /^(?:fill form|fill in|auto-?fill|prefill)\s*(.+)?/i, desc: 'Auto-fill a form using context or scraped data', handler: (m) => ({ reply: `Auto-filling form${m[1] ? ' with: ' + m[1] : ''}…`, actions: [{ type: 'fill-form', data: m[1] || '' }] }) },
   { id: 'fill-field', cat: 'Forms', pattern: /^(?:fill|set)\s+["']?(.+?)["']?\s+(?:to|with|as)\s+["'](.+?)["']/i, desc: 'Fill a specific field with a value', handler: (m) => ({ reply: `Setting ${m[1]} to "${m[2]}"`, actions: [{ type: 'type', selector: m[1], text: m[2] }] }) },
   { id: 'clear-field', cat: 'Forms', pattern: /^clear\s+["']?(.+?)["']?\s*$/i, desc: 'Clear an input field', handler: (m) => ({ reply: `Clearing: ${m[1]}`, actions: [{ type: 'clear', selector: m[1] }] }) },
@@ -1057,6 +1064,21 @@ function buildConnectionContext() {
 async function processChat(message, config, history, pageContext) {
   const lower = (message || '').toLowerCase().trim();
 
+  // "retry" / "again" should reuse the latest meaningful user instruction from history.
+  const retryOnly = /^(?:retry|again|try again|do it again|same again|rerun|re-run|repeat)$/i;
+  if (retryOnly.test(lower) && Array.isArray(history) && history.length) {
+    const prevUser = [...history]
+      .reverse()
+      .find(h => h && h.role === 'user' && h.content && !retryOnly.test(String(h.content).trim().toLowerCase()));
+    if (prevUser) {
+      const retryResult = await processChat(String(prevUser.content), config, history, pageContext);
+      return {
+        ...retryResult,
+        reply: `Retrying: ${String(prevUser.content).slice(0, 120)}${String(prevUser.content).length > 120 ? '…' : ''}\n\n${retryResult.reply || ''}`.trim(),
+      };
+    }
+  }
+
   // ── Intent normalization: strip conversational preambles so patterns match ──
   // "I want to watch X on YouTube" → "watch X on YouTube"
   // "can you please open google" → "open google"
@@ -1095,7 +1117,7 @@ async function processChat(message, config, history, pageContext) {
     const searchUrls = {
       youtube: `https://www.youtube.com/results?search_query=${encodeURIComponent(task)}`,
       spotify: `https://open.spotify.com/search/${encodeURIComponent(task)}`,
-      google: `https://www.google.com/search?q=${encodeURIComponent(task)}`,
+      google: `https://duckduckgo.com/?q=${encodeURIComponent(task)}`,
       github: `https://github.com/search?q=${encodeURIComponent(task)}`,
       twitter: `https://x.com/search?q=${encodeURIComponent(task)}`,
       x: `https://x.com/search?q=${encodeURIComponent(task)}`,
@@ -1284,14 +1306,22 @@ const PROVIDER_ENDPOINTS = {
 
 /* ── Provider model catalog URLs ── */
 const MODEL_CATALOG_URLS = {
-  openai:      { url: 'https://api.openai.com/v1/models', needsKey: true },
-  openrouter:  { url: 'https://openrouter.ai/api/v1/models', needsKey: false },
-  anthropic:   { url: 'https://api.anthropic.com/v1/models', needsKey: true, extra: { 'anthropic-version': '2025-04-01' } },
-  gemini:      { url: null, needsKey: true }, // key appended as query param
-  grok:        { url: 'https://api.x.ai/v1/models', needsKey: true },
-  mistral:     { url: 'https://api.mistral.ai/v1/models', needsKey: true },
-  deepseek:    { url: 'https://api.deepseek.com/v1/models', needsKey: true },
-  huggingface: { url: 'https://huggingface.co/api/models?pipeline_tag=text-generation&sort=downloads&limit=80', needsKey: false },
+  openai:        { url: 'https://api.openai.com/v1/models', needsKey: true },
+  openrouter:    { url: 'https://openrouter.ai/api/v1/models', needsKey: false },
+  anthropic:     { url: 'https://api.anthropic.com/v1/models', needsKey: true, extra: { 'anthropic-version': '2025-04-01' } },
+  gemini:        { url: null, needsKey: true }, // key appended as query param
+  grok:          { url: 'https://api.x.ai/v1/models', needsKey: true },
+  mistral:       { url: 'https://api.mistral.ai/v1/models', needsKey: true },
+  deepseek:      { url: 'https://api.deepseek.com/v1/models', needsKey: true },
+  huggingface:   { url: 'https://huggingface.co/api/models?pipeline_tag=text-generation&sort=downloads&limit=80', needsKey: false },
+  ollama:        { url: null, needsKey: false, custom: 'ollama' },
+  'ollama-cloud':{ url: 'https://api.ollama.com/v1/models', needsKey: true },
+  groq:          { url: 'https://api.groq.com/openai/v1/models', needsKey: true },
+  together:      { url: 'https://api.together.xyz/v1/models', needsKey: true },
+  cerebras:      { url: 'https://api.cerebras.ai/v1/models', needsKey: true },
+  perplexity:    { url: 'https://api.perplexity.ai/models', needsKey: true },
+  cohere:        { url: 'https://api.cohere.com/v2/models', needsKey: true },
+  fireworks:     { url: 'https://api.fireworks.ai/inference/v1/models', needsKey: true },
 };
 
 async function fetchModelCatalog(provider, apiKey) {
@@ -1301,6 +1331,28 @@ async function fetchModelCatalog(provider, apiKey) {
   let catalogUrl = spec.url;
   const headers = { 'Content-Type': 'application/json' };
 
+  // Ollama local: try /v1/models then fallback to /api/tags
+  if (spec.custom === 'ollama') {
+    const base = apiKey ? 'https://api.ollama.com' : 'http://localhost:11434';
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+    try {
+      const r = await fetch(`${base}/v1/models`, { headers, signal: AbortSignal.timeout(8000) });
+      if (r.ok) {
+        const d = await r.json();
+        const models = d.data || d.models || [];
+        return models.map(m => ({ id: m.id || m.name || m.model, name: m.id || m.name || m.model }));
+      }
+    } catch {}
+    try {
+      const r2 = await fetch(`${base}/api/tags`, { headers, signal: AbortSignal.timeout(8000) });
+      if (r2.ok) {
+        const d2 = await r2.json();
+        return (d2.models || []).map(m => ({ id: m.name || m.model, name: m.name || m.model }));
+      }
+    } catch {}
+    return [];
+  }
+
   if (provider === 'gemini') {
     if (!apiKey) return [];
     catalogUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
@@ -1309,6 +1361,8 @@ async function fetchModelCatalog(provider, apiKey) {
     if (provider === 'anthropic') {
       headers['x-api-key'] = apiKey;
       headers['anthropic-version'] = '2025-04-01';
+    } else if (provider === 'cohere') {
+      headers['Authorization'] = `Bearer ${apiKey}`;
     } else {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
@@ -1329,8 +1383,17 @@ async function fetchModelCatalog(provider, apiKey) {
   if (provider === 'gemini' && data.models) {
     return data.models.map(m => ({ id: m.name?.replace('models/','') || m.name, name: m.displayName || m.name }));
   }
+  if (provider === 'cohere' && data.models) {
+    return data.models.map(m => ({ id: m.name, name: m.name }));
+  }
+  if ((provider === 'ollama-cloud') && data.models) {
+    return data.models.map(m => ({ id: m.name || m.model || m.id, name: m.name || m.model || m.id }));
+  }
   if (data.data) {
     return data.data.map(m => ({ id: m.id, name: m.id }));
+  }
+  if (data.models) {
+    return data.models.map(m => ({ id: m.id || m.name, name: m.id || m.name }));
   }
   return [];
 }
@@ -1349,6 +1412,8 @@ Available action types:
 - screenshot: {"type":"screenshot"}
 - extract-text, extract-links, extract-emails, extract-table, extract-images, extract-headings, extract-meta
 - fill-form: {"type":"fill-form","data":{"fieldName":"value"}}
+- spreadsheet-fill-values: {"type":"spreadsheet-fill-values","values":["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]} — fills an arbitrary list of values down from the selected cell in Google Sheets/Excel. Use this for days of the week, months, custom lists, etc.
+- spreadsheet-fill-dates: {"type":"spreadsheet-fill-dates","startDate":"01/04/2026","endDate":"05/04/2026"} — fills a date range down from selected cell in Google Sheets/Excel. Use ONLY when the user provides explicit start and end dates.
 - auto-fill: {"type":"auto-fill"} — fills forms using stored persona data
 - generate-file: {"type":"generate-file","filename":"name.ext","content":"...","mime":"text/plain"}
 - download: {"type":"download","url":"...","filename":"..."}
@@ -1368,7 +1433,14 @@ CRITICAL RULES:
 6. NEVER say "I cannot interact with the browser" — you ARE the browser automation engine.
 7. For clicking: prefer CSS selectors. For nth results on search pages use "#search .g:nth-of-type(N) a".
 8. Always be helpful, proactive, and efficient. Respond in the user's language.
-9. Example response format: {"reply":"Opening YouTube to search for Carice music","actions":[{"type":"navigate","url":"https://www.youtube.com/results?search_query=Carice+music","followUp":[{"type":"dismiss-cookies","delay":1500},{"type":"click","selector":"first result","delay":3000}]}]}`) + buildConnectionContext();
+9. Example response format: {"reply":"Opening YouTube to search for Carice music","actions":[{"type":"navigate","url":"https://www.youtube.com/results?search_query=Carice+music","followUp":[{"type":"dismiss-cookies","delay":1500},{"type":"click","selector":"first result","delay":3000}]}]}
+
+RESPONSE STYLE (save tokens):
+Respond terse like smart caveman. All technical substance stay. Only fluff die.
+- Drop: articles (a/an/the), filler (just/really/basically), pleasantries, hedging
+- Fragments OK. Short synonyms. Technical terms exact. Code unchanged.
+- Pattern: [thing] [action] [reason]. [next step].
+- Auto-Clarity: drop terse style for security warnings, irreversible actions, user confused. Resume after.`) + buildConnectionContext();
   // Sanitize history: map 'agent' role to 'assistant' (Mistral/OpenAI only accept system/user/assistant)
   const sanitizedHistory = (history || []).slice(-10).map(m => ({
     role: m.role === 'agent' ? 'assistant' : m.role,
@@ -1429,9 +1501,23 @@ CRITICAL RULES:
       break;
 
     case 'ollama':
-      apiUrl = (endpoint || 'http://localhost:11434') + '/api/chat';
-      headers = { 'Content-Type': 'application/json' };
-      body = JSON.stringify({ model: model || 'llama3', messages, stream: false });
+      if (apiKey) {
+        // Ollama Cloud (OpenAI-compatible)
+        apiUrl = (endpoint || 'https://api.ollama.com') + '/v1/chat/completions';
+        headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
+        body = JSON.stringify({ model: model || 'llama3', messages, max_tokens: 1024 });
+      } else {
+        // Local Ollama
+        apiUrl = (endpoint || 'http://localhost:11434') + '/api/chat';
+        headers = { 'Content-Type': 'application/json' };
+        body = JSON.stringify({ model: model || 'llama3', messages, stream: false });
+      }
+      break;
+
+    case 'ollama-cloud':
+      apiUrl = (endpoint || 'https://api.ollama.com') + '/v1/chat/completions';
+      headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
+      body = JSON.stringify({ model: model || 'llama3.2', messages, max_tokens: 1024 });
       break;
 
     case 'custom':
@@ -1606,12 +1692,20 @@ async function testConnection(provider, secret, metadata) {
         return { ok: true, message: 'Notion API key is valid' };
       }
       case 'ollama': case 'lmstudio': {
-        let base = 'http://localhost:11434';
+        let base = provider === 'lmstudio' ? 'http://localhost:1234' : 'http://localhost:11434';
+        // If an API key is provided, assume Ollama Cloud (https://api.ollama.com)
+        if (provider === 'ollama' && secret) base = 'https://api.ollama.com';
         try { if (metadata) { const m = JSON.parse(metadata); if (m.baseUrl) base = m.baseUrl; } } catch {}
-        if (provider === 'lmstudio') base = 'http://localhost:1234';
-        const r = await fetch(`${base.replace(/\/+$/, '')}/api/tags`, { signal: timeout }).catch(() => fetch(`${base.replace(/\/+$/, '')}/v1/models`, { signal: timeout }));
+        const authHeaders = (provider === 'ollama' && secret) ? { 'Authorization': `Bearer ${secret}` } : {};
+        const r = await fetch(`${base.replace(/\/+$/, '')}/v1/models`, { headers: authHeaders, signal: timeout })
+          .catch(() => fetch(`${base.replace(/\/+$/, '')}/api/tags`, { headers: authHeaders, signal: timeout }));
         if (!r.ok) throw new Error(`${provider} returned ${r.status}`);
-        return { ok: true, message: `${provider === 'ollama' ? 'Ollama' : 'LM Studio'} is running` };
+        return { ok: true, message: `${provider === 'ollama' ? 'Ollama' : 'LM Studio'} is ${secret ? 'cloud-connected' : 'running locally'}` };
+      }
+      case 'ollama-cloud': {
+        const r = await fetch('https://api.ollama.com/v1/models', { headers: { 'Authorization': `Bearer ${secret}` }, signal: timeout });
+        if (!r.ok) throw new Error(`Ollama Cloud returned ${r.status}`);
+        return { ok: true, message: 'Ollama Cloud API key is valid' };
       }
       case 'slack': {
         const r = await fetch('https://slack.com/api/auth.test', { headers: { 'Authorization': `Bearer ${secret}` }, signal: timeout });

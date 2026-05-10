@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
    persona.js — AMI Browser Persona Page Logic
-   Local OCR-like text parsing for CV/LinkedIn/text import
+   Text parsing for profile import
    ═══════════════════════════════════════════════════════════ */
 'use strict';
 
@@ -59,18 +59,52 @@ function applyPersonaToForm(data) {
   });
 }
 
-/* ══════════════ Text parsing engine (local OCR-like) ══════════════ */
+function normalizeImportedText(raw) {
+  if (!raw) return '';
+  return String(raw)
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function splitSections(text) {
+  const lines = text.split('\n').map(l => l.trim());
+  const sectionNames = [
+    'summary', 'about', 'profile', 'experience', 'work experience', 'employment',
+    'education', 'skills', 'languages', 'projects', 'certifications', 'contact',
+  ];
+  const sections = {};
+  let current = 'root';
+  sections[current] = [];
+
+  for (const line of lines) {
+    const norm = line.toLowerCase().replace(/[:：]$/, '').trim();
+    if (sectionNames.includes(norm)) {
+      current = norm;
+      if (!sections[current]) sections[current] = [];
+      continue;
+    }
+    if (line) sections[current].push(line);
+  }
+  return sections;
+}
+
+/* ══════════════ Text parsing engine (local) ══════════════ */
 function parseTextToPersona(text) {
+  text = normalizeImportedText(text);
   const result = {};
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const fullText = text;
+  const sections = splitSections(fullText);
 
   // Email
   const emailMatch = fullText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
   if (emailMatch) result.email = emailMatch[0];
 
   // Phone — international formats
-  const phoneMatch = fullText.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}/);
+  const phoneMatch = fullText.match(/(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{1,4}\)?[-.\s]?)?\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{2,4}/);
   if (phoneMatch) {
     const cleaned = phoneMatch[0].replace(/[^\d+()-\s]/g, '').trim();
     if (cleaned.replace(/\D/g, '').length >= 7) result.phone = cleaned;
@@ -84,16 +118,16 @@ function parseTextToPersona(text) {
   const linkedinMatch = fullText.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+/i);
   if (linkedinMatch && !result.website) result.website = linkedinMatch[0].startsWith('http') ? linkedinMatch[0] : `https://${linkedinMatch[0]}`;
 
-  // Name — try labeled patterns first, then heuristic (first non-empty line that looks like a name)
+  // Name — try labeled patterns first, then heuristic
   const namePatterns = [
     /(?:full\s*name|name)\s*[:：]\s*(.+)/i,
+    /(?:^|\n)\s*([A-ZÀ-Ý][a-zA-ZÀ-ÿ'\-]+\s+[A-ZÀ-Ý][a-zA-ZÀ-ÿ'\-]+(?:\s+[A-ZÀ-Ý][a-zA-ZÀ-ÿ'\-]+){0,2})\s*(?:\n|$)/,
     /(?:^|\n)\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*(?:\n|$)/,
   ];
   for (const p of namePatterns) {
     const m = fullText.match(p);
     if (m) { result.name = m[1].trim(); break; }
   }
-  // Fallback: first line if it looks like a name (2-4 capitalized words, no digits, no special chars)
   if (!result.name && lines.length) {
     const firstLine = lines[0];
     if (/^[A-Z][a-zA-ZÀ-ÿ'-]+(?:\s+[A-Z][a-zA-ZÀ-ÿ'-]+){0,3}$/.test(firstLine) && firstLine.length < 60) {
@@ -126,7 +160,7 @@ function parseTextToPersona(text) {
   // Job title patterns
   const jobPatterns = [
     /(?:title|position|role|job\s*title)\s*[:：]\s*(.+)/i,
-    /(?:^|\n)\s*(?:Senior|Junior|Lead|Chief|Head|Director|Manager|Engineer|Developer|Designer|Analyst|Consultant|Specialist|Coordinator|Associate|VP|Vice President|CTO|CEO|CFO|COO|CIO|Founder|Co-founder)\s*.{0,50}(?:\n|$)/i,
+    /(?:^|\n)\s*(?:Senior|Junior|Lead|Chief|Head|Director|Manager|Engineer|Developer|Designer|Analyst|Consultant|Specialist|Coordinator|Associate|VP|Vice President|CTO|CEO|CFO|COO|CIO|Founder|Co-founder)\s*.{0,80}(?:\n|$)/i,
   ];
   for (const p of jobPatterns) {
     const m = fullText.match(p);
@@ -143,87 +177,67 @@ function parseTextToPersona(text) {
     if (m) { result.company = m[1].trim(); break; }
   }
 
-  // Address patterns
-  const addrPattern = /(?:address)\s*[:：]\s*(.+)/i;
-  const addrMatch = fullText.match(addrPattern);
+  // Address
+  const addrMatch = fullText.match(/(?:address)\s*[:：]\s*(.+)/i);
   if (addrMatch) result.address = addrMatch[1].trim();
 
   // City
-  const cityPattern = /(?:city|town|location)\s*[:：]\s*(.+)/i;
-  const cityMatch = fullText.match(cityPattern);
+  const cityMatch = fullText.match(/(?:city|town|location)\s*[:：]\s*(.+)/i);
   if (cityMatch) result.city = cityMatch[1].trim();
 
   // Country
-  const countryPattern = /(?:country|nation)\s*[:：]\s*(.+)/i;
-  const countryMatch = fullText.match(countryPattern);
+  const countryMatch = fullText.match(/(?:country|nation)\s*[:：]\s*(.+)/i);
   if (countryMatch) result.country = countryMatch[1].trim();
 
   // ZIP
-  const zipPattern = /(?:zip|postal\s*code|postcode)\s*[:：]\s*(\d{4,10}[-\s]?\d{0,4})/i;
-  const zipMatch = fullText.match(zipPattern);
+  const zipMatch = fullText.match(/(?:zip|postal\s*code|postcode)\s*[:：]\s*(\d{4,10}[-\s]?\d{0,4})/i);
   if (zipMatch) result.zip = zipMatch[1].trim();
 
   // Skills
-  const skillsPattern = /(?:skills?|expertise|technologies|tech\s*stack)\s*[:：]\s*(.+(?:\n(?!\n).+)*)/i;
-  const skillsMatch = fullText.match(skillsPattern);
+  const skillsMatch = fullText.match(/(?:skills?|expertise|technologies|tech\s*stack)\s*[:：]\s*(.+(?:\n(?!\n).+)*)/i);
   if (skillsMatch) result.skills = skillsMatch[1].replace(/\n/g, ', ').trim();
+  if (!result.skills && sections.skills?.length) {
+    result.skills = sections.skills
+      .map(s => s.replace(/^[-•*]\s*/, '').trim())
+      .filter(Boolean)
+      .slice(0, 30)
+      .join(', ');
+  }
 
   // Education
-  const eduPattern = /(?:education|degree|university|college|school)\s*[:：]\s*(.+(?:\n(?!\n).+)*)/i;
-  const eduMatch = fullText.match(eduPattern);
+  const eduMatch = fullText.match(/(?:education|degree|university|college|school)\s*[:：]\s*(.+(?:\n(?!\n).+)*)/i);
   if (eduMatch) result.education = eduMatch[1].replace(/\n/g, ', ').trim();
+  if (!result.education && sections.education?.length) {
+    result.education = sections.education.slice(0, 5).join(', ');
+  }
 
   // Languages
-  const langPattern = /(?:languages?|speaks?)\s*[:：]\s*(.+)/i;
-  const langMatch = fullText.match(langPattern);
+  const langMatch = fullText.match(/(?:languages?|speaks?)\s*[:：]\s*(.+)/i);
   if (langMatch) result.languages = langMatch[1].trim();
+  if (!result.languages && sections.languages?.length) {
+    result.languages = sections.languages
+      .map(s => s.replace(/^[-•*]\s*/, '').trim())
+      .filter(Boolean)
+      .join(', ');
+  }
 
-  // Bio — "about" section or "summary"
-  const bioPattern = /(?:about|summary|bio|profile|objective)\s*[:：]?\s*\n?(.{20,500})/is;
-  const bioMatch = fullText.match(bioPattern);
+  // Bio
+  const bioMatch = fullText.match(/(?:about|summary|bio|profile|objective)\s*[:：]?\s*\n?(.{20,700})/is);
   if (bioMatch) result.bio = bioMatch[1].trim().substring(0, 300);
-
-  return result;
-}
-
-/* ══════════════ LinkedIn-specific parser ══════════════ */
-function parseLinkedInText(text) {
-  const result = parseTextToPersona(text);
-
-  // LinkedIn-specific patterns
-  // "Name\nTitle at Company\nLocation"
-  const headerPattern = /^(.+)\n(.+?)(?:\s+at\s+|\s+chez\s+|\s+@\s+)(.+?)\n(.+?)$/m;
-  const headerMatch = text.match(headerPattern);
-  if (headerMatch) {
-    if (!result.name) result.name = headerMatch[1].trim();
-    if (!result.jobTitle) result.jobTitle = headerMatch[2].trim();
-    if (!result.company) result.company = headerMatch[3].trim();
-    if (!result.city) result.city = headerMatch[4].trim();
+  if (!result.bio && sections.summary?.length) {
+    result.bio = sections.summary.join(' ').slice(0, 300);
+  } else if (!result.bio && sections.about?.length) {
+    result.bio = sections.about.join(' ').slice(0, 300);
   }
 
-  // "Experience" section
-  const expPattern = /Experience\n(.+?)(?:\n(?:Education|Skills|Licenses|Certifications|Languages|Interests)\n|$)/is;
-  const expMatch = text.match(expPattern);
-  if (expMatch && !result.jobTitle) {
-    const expLines = expMatch[1].split('\n').filter(Boolean);
-    if (expLines[0]) result.jobTitle = expLines[0].trim();
-    if (expLines[1]) result.company = expLines[1].trim();
+  // Fallbacks
+  if (!result.jobTitle) {
+    const likelyTitle = lines.find(l => /engineer|developer|designer|manager|consultant|analyst|architect|founder|director|lead|product/i.test(l) && l.length <= 100);
+    if (likelyTitle) result.jobTitle = likelyTitle;
   }
-
-  // "Skills" section
-  const skillsSection = /Skills\n(.+?)(?:\n(?:Education|Experience|Languages|Interests|Certifications)\n|$)/is;
-  const skillsMatch = text.match(skillsSection);
-  if (skillsMatch) {
-    result.skills = skillsMatch[1].split('\n').filter(l => l.trim() && !l.match(/^\d+\s*endorsement/i)).map(l => l.trim()).join(', ');
-  }
-
-  // Split name
-  if (result.name && !result.firstName) {
-    const parts = result.name.split(/\s+/);
-    if (parts.length >= 2) {
-      result.firstName = parts[0];
-      result.lastName = parts.slice(1).join(' ');
-    }
+  if (!result.company) {
+    const atPattern = fullText.match(/(?:\b(?:at|chez|@)\s+)([A-Z][\w&.,'\- ]{1,50})/i);
+    if (atPattern) result.company = atPattern[1].trim();
   }
 
   return result;
@@ -233,16 +247,12 @@ function parseLinkedInText(text) {
 function readFileAsText(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
+    reader.onload = () => {
+      const out = typeof reader.result === 'string' ? reader.result : '';
+      resolve(normalizeImportedText(out));
+    };
     reader.onerror = () => reject(new Error('Failed to read file'));
-
-    if (file.type === 'application/pdf') {
-      // For PDF we read as text — basic extraction
-      // PDFs are binary, but FileReader.readAsText often captures enough text for parsing
-      reader.readAsText(file);
-    } else {
-      reader.readAsText(file);
-    }
+    reader.readAsText(file);
   });
 }
 
@@ -315,24 +325,6 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast('🗑️ Persona cleared');
   });
 
-  // CV upload
-  document.getElementById('btn-import-cv')?.addEventListener('click', () => {
-    document.getElementById('file-cv')?.click();
-  });
-  document.getElementById('file-cv')?.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await readFileAsText(file);
-      const parsed = parseTextToPersona(text);
-      showPreview(parsed);
-      showToast(`📄 Parsed ${Object.keys(parsed).length} fields from ${file.name}`);
-    } catch (err) {
-      showToast('❌ Failed to read file');
-    }
-    e.target.value = '';
-  });
-
   // JSON import
   document.getElementById('btn-import-json')?.addEventListener('click', () => {
     document.getElementById('file-json')?.click();
@@ -365,22 +357,6 @@ document.addEventListener('DOMContentLoaded', () => {
     showPreview(parsed);
     document.getElementById('text-import-area')?.classList.add('hidden');
     showToast(`📝 Extracted ${Object.keys(parsed).length} fields`);
-  });
-
-  // LinkedIn import
-  document.getElementById('btn-import-linkedin')?.addEventListener('click', () => {
-    document.getElementById('linkedin-import-area')?.classList.remove('hidden');
-  });
-  document.getElementById('btn-cancel-linkedin')?.addEventListener('click', () => {
-    document.getElementById('linkedin-import-area')?.classList.add('hidden');
-  });
-  document.getElementById('btn-parse-linkedin')?.addEventListener('click', () => {
-    const input = document.getElementById('linkedin-import-input');
-    if (!input?.value.trim()) { showToast('Paste LinkedIn data first'); return; }
-    const parsed = parseLinkedInText(input.value);
-    showPreview(parsed);
-    document.getElementById('linkedin-import-area')?.classList.add('hidden');
-    showToast(`💼 Extracted ${Object.keys(parsed).length} fields from LinkedIn`);
   });
 
   // Apply imported data

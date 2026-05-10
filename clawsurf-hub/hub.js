@@ -11,11 +11,12 @@ const GW_WS    = 'ws://127.0.0.1:18792';
 const MCP_HTTP = 'http://127.0.0.1:9223';
 
 const STORE_KEYS = {
-  config:    'ami_config',
-  crons:     'ami_automations',
-  shortcuts: 'ami_shortcuts',
-  stats:     'ami_stats',
-  chatHist:  'ami_chat_history',
+  config:       'ami_config',
+  crons:        'ami_automations',
+  shortcuts:    'ami_shortcuts',
+  stats:        'ami_stats',
+  chatHist:     'ami_chat_history',
+  widgetLayout: 'ami_widget_layout',
 };
 
 const BUILTIN_EXT_NAMES = {
@@ -112,6 +113,7 @@ const dom = {
   cronNotify:    $('#cron-notify'),
   btnCreateCron: $('#btn-create-cron'),
   btnAddShortcut:$('#btn-add-shortcut'),
+  btnManageShortcuts:$('#btn-manage-shortcuts'),
   btnMic:        $('#btn-mic'),
   btnTts:        $('#btn-tts'),
 };
@@ -131,14 +133,14 @@ let extIdCache = {};
    Integration slider (auto-scroll + drag)
    ══════════════════════════════════════ */
 const SLIDER_INTEGRATIONS = [
-  { label: 'OpenAI',        logo: 'https://cdn.simpleicons.org/openai' },
-  { label: 'Anthropic',     logo: 'https://cdn.simpleicons.org/anthropic' },
+  { label: 'OpenAI',        logo: 'https://cdn.simpleicons.org/openai/412991' },
+  { label: 'Anthropic',     logo: 'https://cdn.simpleicons.org/anthropic/D97757' },
   { label: 'Google Gemini',  logo: 'https://cdn.simpleicons.org/googlegemini/4285F4' },
-  { label: 'Mistral AI',    logo: 'https://cdn.simpleicons.org/mistralai' },
+  { label: 'Mistral AI',    logo: 'https://cdn.simpleicons.org/mistralai/F7931E' },
   { label: 'Meta',          logo: 'https://cdn.simpleicons.org/meta/0082FB' },
-  { label: 'HuggingFace',   logo: 'https://cdn.simpleicons.org/huggingface' },
+  { label: 'HuggingFace',   logo: 'https://cdn.simpleicons.org/huggingface/FF9A00' },
   { label: 'Groq',          logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23F55036%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3EG%3C/text%3E%3C/svg%3E" },
-  { label: 'Perplexity',    logo: 'https://cdn.simpleicons.org/perplexity' },
+  { label: 'Perplexity',    logo: 'https://cdn.simpleicons.org/perplexity/20808D' },
   { label: 'Telegram',      logo: 'https://cdn.simpleicons.org/telegram/26A5E4' },
   { label: 'Discord',       logo: 'https://cdn.simpleicons.org/discord/5865F2' },
   { label: 'WhatsApp',      logo: 'https://cdn.simpleicons.org/whatsapp/25D366' },
@@ -147,27 +149,27 @@ const SLIDER_INTEGRATIONS = [
   { label: 'Microsoft Teams', logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%236264A7%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ET%3C/text%3E%3C/svg%3E" },
   { label: 'Stripe',        logo: 'https://cdn.simpleicons.org/stripe/635BFF' },
   { label: 'PayPal',        logo: 'https://cdn.simpleicons.org/paypal/003087' },
-  { label: 'GitHub',        logo: 'https://cdn.simpleicons.org/github' },
+  { label: 'GitHub',        logo: 'https://cdn.simpleicons.org/github/181717' },
   { label: 'GitLab',        logo: 'https://cdn.simpleicons.org/gitlab/FC6D26' },
-  { label: 'Vercel',        logo: 'https://cdn.simpleicons.org/vercel' },
+  { label: 'Vercel',        logo: 'https://cdn.simpleicons.org/vercel/000000' },
   { label: 'Cloudflare',    logo: 'https://cdn.simpleicons.org/cloudflare/F38020' },
   { label: 'AWS',           logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23FF9900%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2732%27 fill=%27white%27%3EAWS%3C/text%3E%3C/svg%3E" },
   { label: 'Docker',        logo: 'https://cdn.simpleicons.org/docker/2496ED' },
   { label: 'Salesforce',    logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%2300A1E0%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ESf%3C/text%3E%3C/svg%3E" },
   { label: 'HubSpot',       logo: 'https://cdn.simpleicons.org/hubspot/FF7A59' },
   { label: 'Jira',          logo: 'https://cdn.simpleicons.org/jira/0052CC' },
-  { label: 'Notion',        logo: 'https://cdn.simpleicons.org/notion' },
+  { label: 'Notion',        logo: 'https://cdn.simpleicons.org/notion/000000' },
   { label: 'Linear',        logo: 'https://cdn.simpleicons.org/linear/5E6AD2' },
   { label: 'MongoDB',       logo: 'https://cdn.simpleicons.org/mongodb/47A248' },
   { label: 'Supabase',      logo: 'https://cdn.simpleicons.org/supabase/3FCF8E' },
   { label: 'Firebase',      logo: 'https://cdn.simpleicons.org/firebase/FFCA28' },
   { label: 'CoinGecko',     logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%238BC53F%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ECG%3C/text%3E%3C/svg%3E" },
   { label: 'Ethereum',      logo: 'https://cdn.simpleicons.org/ethereum/3C3C3D' },
-  { label: 'Twilio',        logo: 'https://cdn.simpleicons.org/twilio' },
+  { label: 'Twilio',        logo: 'https://cdn.simpleicons.org/twilio/F22F46' },
   { label: 'Sentry',        logo: 'https://cdn.simpleicons.org/sentry/362D59' },
   { label: 'Datadog',       logo: 'https://cdn.simpleicons.org/datadog/632CA6' },
   { label: 'Grafana',       logo: 'https://cdn.simpleicons.org/grafana/F46800' },
-  { label: 'ElevenLabs',    logo: 'https://cdn.simpleicons.org/elevenlabs' },
+  { label: 'ElevenLabs',    logo: 'https://cdn.simpleicons.org/elevenlabs/FF6B35' },
   { label: 'Pinecone',      logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23000%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3EP%3C/text%3E%3C/svg%3E" },
   { label: 'LangChain',     logo: 'https://cdn.simpleicons.org/langchain/1C3C3C' },
   { label: 'Stability AI',  logo: "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%237C3AED%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ES%3C/text%3E%3C/svg%3E" },
@@ -261,6 +263,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadMemoryViewer();
   refreshBuiltinsStatus();
   initIntegrationSlider();
+  initWidgetSystem();
   setInterval(refreshBuiltinsStatus, 12000);
 
   // Set version tag from manifest
@@ -304,15 +307,29 @@ function handleSearch(val) {
   }
 }
 
+/* Opens a URL in a new tab — used for all automation-triggered navigation */
+function openInNewTab(url) {
+  if (!url) return;
+  const resolved = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  if (typeof chrome !== 'undefined' && chrome.tabs) {
+    chrome.tabs.create({ url: resolved, active: true });
+  } else {
+    window.open(resolved, '_blank', 'noopener');
+  }
+}
+
 /* ══════════════════════════════════════
    Quick links
    ══════════════════════════════════════ */
+let shortcutManageMode = false;
+
 function renderShortcuts(shortcuts) {
   dom.quickLinksGrid.innerHTML = '';
-  shortcuts.forEach(s => {
+  shortcuts.forEach((s, idx) => {
     const a = document.createElement('a');
     a.className = 'shortcut-tile';
-    a.href = s.url;
+    a.href = shortcutManageMode ? '#' : s.url;
+    if (shortcutManageMode) a.addEventListener('click', e => e.preventDefault());
     const isUrl = s.icon && (s.icon.startsWith('http') || s.icon.startsWith('icons/') || s.icon.startsWith('data:'));
     const iconContent = isUrl
       ? `<img src="${s.icon}" alt="${s.label}" width="20" height="20">`
@@ -320,9 +337,24 @@ function renderShortcuts(shortcuts) {
     a.innerHTML = `
       <div class="shortcut-icon" style="background:${s.bg}">${iconContent}</div>
       <span class="shortcut-label">${s.label}</span>
+      ${shortcutManageMode ? `<button class="shortcut-delete" data-idx="${idx}" title="Remove shortcut">✕</button>` : ''}
     `;
     dom.quickLinksGrid.appendChild(a);
   });
+
+  if (shortcutManageMode) {
+    dom.quickLinksGrid.querySelectorAll('.shortcut-delete').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const i = parseInt(btn.dataset.idx, 10);
+        const current = await storeGet(STORE_KEYS.shortcuts, DEFAULT_SHORTCUTS);
+        current.splice(i, 1);
+        await storeSet(STORE_KEYS.shortcuts, current);
+        renderShortcuts(current);
+      });
+    });
+  }
 }
 
 /* ══════════════════════════════════════
@@ -642,7 +674,7 @@ function handleBuiltinCommand(text) {
     const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
     const followUp = [{ type: 'dismiss-cookies', delay: 1500 }, { type: 'click', selector: 'first result', delay: 3000 }];
     devLog('Compound YouTube intent — storing followUp and navigating:', ytUrl);
-    chrome.storage.local.set({ ami_pending_actions: { actions: followUp, url: ytUrl, ts: Date.now() } }, () => handleSearch(ytUrl));
+    chrome.storage.local.set({ ami_pending_actions: { actions: followUp, url: ytUrl, ts: Date.now() } }, () => openInNewTab(ytUrl));
     agentBusy = false;
     dom.agentStatus.textContent = 'Ready';
     return true;
@@ -666,7 +698,7 @@ function handleBuiltinCommand(text) {
     const followUp = [{ type: 'dismiss-cookies', delay: 1500 }, { type: 'click', selector: 'first result', delay: 3000 }];
     addMessage('agent', `Searching ${platform} for: ${query}`);
     devLog('Play intent — storing followUp and navigating:', url);
-    chrome.storage.local.set({ ami_pending_actions: { actions: followUp, url, ts: Date.now() } }, () => handleSearch(url));
+    chrome.storage.local.set({ ami_pending_actions: { actions: followUp, url, ts: Date.now() } }, () => openInNewTab(url));
     agentBusy = false;
     dom.agentStatus.textContent = 'Ready';
     return true;
@@ -681,7 +713,7 @@ function handleBuiltinCommand(text) {
     const followUp = [{ type: 'dismiss-cookies', delay: 1500 }, { type: 'click', selector: 'first result', delay: 3000 }];
     addMessage('agent', `Searching YouTube: ${query}`);
     devLog('YouTube search — storing followUp and navigating:', ytUrl);
-    chrome.storage.local.set({ ami_pending_actions: { actions: followUp, url: ytUrl, ts: Date.now() } }, () => handleSearch(ytUrl));
+    chrome.storage.local.set({ ami_pending_actions: { actions: followUp, url: ytUrl, ts: Date.now() } }, () => openInNewTab(ytUrl));
     agentBusy = false;
     dom.agentStatus.textContent = 'Ready';
     return true;
@@ -697,7 +729,7 @@ function handleBuiltinCommand(text) {
       addMessage('agent', `Opening ${url}…`);
       agentBusy = false;
       dom.agentStatus.textContent = 'Ready';
-      setTimeout(() => handleSearch(url), 300);
+      setTimeout(() => openInNewTab(url), 300);
       return true;
     }
   }
@@ -873,10 +905,10 @@ function executeActions(actions) {
               }
             }, () => {
               devLog('Pending actions stored, navigating now...');
-              handleSearch(action.url);
+              openInNewTab(action.url);
             });
           } else {
-            handleSearch(action.url);
+            openInNewTab(action.url);
           }
         }
         return;
@@ -1189,7 +1221,7 @@ async function syncKeyFromConnections() {
   } catch { /* gateway offline — ignore */ }
 }
 
-function saveConfig() {
+function saveConfig(showToast = true) {
   config = {
     provider:     dom.llmProvider.value,
     apiKey:       dom.llmApiKey.value,
@@ -1200,15 +1232,15 @@ function saveConfig() {
     showThinking: dom.cfgThinking.checked,
   };
   storeSet(STORE_KEYS.config, config);
-  addMessage('system', 'Configuration saved.');
+  if (showToast) addMessage('system', 'Configuration saved.');
 }
 
 function updateConfigVisibility() {
   const prov = dom.llmProvider.value;
   const show = (sel, cond) => { const el = $(sel); if (el) el.classList.toggle('cfg-hidden', !cond); };
-  const needsKey = ['openai','anthropic','gemini','mistral','grok','deepseek','openrouter','huggingface','custom'].includes(prov);
+  const needsKey = ['openai','anthropic','gemini','mistral','grok','deepseek','openrouter','huggingface','ollama-cloud','together','groq','cerebras','perplexity','cohere','fireworks','custom'].includes(prov);
   show('#cfg-api-key', needsKey);
-  show('#cfg-url',     prov === 'ollama' || prov === 'custom');
+  show('#cfg-url',     prov === 'ollama' || prov === 'ollama-cloud' || prov === 'custom');
   show('#cfg-model',   prov !== 'none');
 }
 
@@ -1383,8 +1415,12 @@ function bindEvents() {
   dom.btnSettings.addEventListener('click', () => openModal('settings'));
 
   // Config
-  dom.llmProvider.addEventListener('change', updateConfigVisibility);
-  dom.btnSaveConfig.addEventListener('click', saveConfig);
+  dom.llmProvider.addEventListener('change', () => {
+    updateConfigVisibility();
+    saveConfig(false);
+  });
+  dom.llmModel.addEventListener('change', () => saveConfig(false));
+  dom.btnSaveConfig.addEventListener('click', () => saveConfig(true));
 
   // Modal close buttons
   $$('[data-close]').forEach(btn => btn.addEventListener('click', closeModals));
@@ -1403,6 +1439,13 @@ function bindEvents() {
       storeSet(STORE_KEYS.shortcuts, shortcuts);
       renderShortcuts(shortcuts);
     });
+  });
+
+  // Manage shortcuts toggle
+  dom.btnManageShortcuts.addEventListener('click', () => {
+    shortcutManageMode = !shortcutManageMode;
+    dom.btnManageShortcuts.textContent = shortcutManageMode ? '✓ Done' : '✎ Manage';
+    storeGet(STORE_KEYS.shortcuts, DEFAULT_SHORTCUTS).then(renderShortcuts);
   });
 }
 
@@ -1423,17 +1466,24 @@ function escHtml(s) {
    Provider dropdown population
    ══════════════════════════════════════ */
 const ALL_PROVIDERS = [
-  { id: 'none',        label: '— Select a provider —' },
-  { id: 'openai',      label: 'OpenAI' },
-  { id: 'anthropic',   label: 'Anthropic' },
-  { id: 'gemini',      label: 'Google Gemini' },
-  { id: 'mistral',     label: 'Mistral' },
-  { id: 'grok',        label: 'xAI Grok' },
-  { id: 'deepseek',    label: 'DeepSeek' },
-  { id: 'openrouter',  label: 'OpenRouter' },
-  { id: 'huggingface', label: 'HuggingFace' },
-  { id: 'ollama',      label: 'Ollama (local)' },
-  { id: 'custom',      label: 'Custom endpoint' },
+  { id: 'none',           label: '— Select a provider —' },
+  { id: 'openai',         label: 'OpenAI' },
+  { id: 'anthropic',      label: 'Anthropic' },
+  { id: 'gemini',         label: 'Google Gemini' },
+  { id: 'mistral',        label: 'Mistral' },
+  { id: 'grok',           label: 'xAI Grok' },
+  { id: 'deepseek',       label: 'DeepSeek' },
+  { id: 'openrouter',     label: 'OpenRouter' },
+  { id: 'huggingface',    label: 'HuggingFace' },
+  { id: 'ollama',         label: 'Ollama (local)' },
+  { id: 'ollama-cloud',   label: 'Ollama Cloud' },
+  { id: 'together',       label: 'Together AI' },
+  { id: 'groq',           label: 'Groq' },
+  { id: 'cerebras',       label: 'Cerebras' },
+  { id: 'perplexity',     label: 'Perplexity' },
+  { id: 'cohere',         label: 'Cohere' },
+  { id: 'fireworks',      label: 'Fireworks AI' },
+  { id: 'custom',         label: 'Custom endpoint' },
 ];
 
 function populateProviderDropdown() {
@@ -1727,6 +1777,302 @@ chrome.storage?.onChanged?.addListener((changes) => {
     renderMemoryList(mem);
   }
 });
+
+/* ══════════════════════════════════════
+   Widget Drag-Drop System
+   ══════════════════════════════════════ */
+const WIDGET_NAMES = {
+  'quick-links':  'Quick Links',
+  'ami-tools':    'AMI Tools',
+  'stats':        'AMI Activity',
+  'integrations': 'Integrations',
+  'skills':       'Agent Skills',
+  'chat':         'Chat',
+  'cron':         'Scheduled Automation',
+  'config':       'Agent Config',
+  'persona-link': 'My Persona',
+  'memory':       'Agent Memory',
+};
+
+function initWidgetSystem() {
+  // Load saved visibility state; hidden widget IDs are stored as a Set
+  storeGet(STORE_KEYS.widgetLayout, { hidden: [] }).then(layout => {
+    const hidden = new Set(layout.hidden || []);
+
+    document.querySelectorAll('[data-widget-id]').forEach(card => {
+      const id = card.dataset.widgetId;
+
+      // Apply hidden state
+      if (hidden.has(id)) card.classList.add('widget-hidden');
+
+      // Inject controls into title bar (or top-right of card)
+      injectWidgetControls(card, id);
+
+      // Drag-and-drop
+      card.setAttribute('draggable', 'true');
+      card.addEventListener('dragstart', onWidgetDragStart);
+      card.addEventListener('dragend',   onWidgetDragEnd);
+    });
+
+    // Make columns drop zones
+    document.querySelectorAll('.hub-col').forEach(col => {
+      col.addEventListener('dragover',  onColDragOver);
+      col.addEventListener('dragleave', onColDragLeave);
+      col.addEventListener('drop',      onColDrop);
+    });
+
+    // Settings modal: render widget manager when modal opens
+    const btnSettings = document.getElementById('btn-settings');
+    if (btnSettings) {
+      btnSettings.addEventListener('click', () => {
+        renderWidgetManager();
+      });
+    }
+
+    // Reset layout button
+    const btnReset = document.getElementById('btn-reset-layout');
+    if (btnReset) {
+      btnReset.addEventListener('click', () => {
+        document.querySelectorAll('[data-widget-id]').forEach(c => c.classList.remove('widget-hidden'));
+        storeSet(STORE_KEYS.widgetLayout, { hidden: [] });
+        renderWidgetManager();
+      });
+    }
+  });
+}
+
+function injectWidgetControls(card, id) {
+  // Only inject once
+  if (card.querySelector('.widget-controls')) return;
+
+  const ctrl = document.createElement('div');
+  ctrl.className = 'widget-controls';
+
+  const handle = document.createElement('button');
+  handle.className = 'widget-drag-handle';
+  handle.title = 'Drag to reorder';
+  handle.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="15" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>';
+  // Prevent drag starting from the button itself — let the card draggable handle it
+  handle.addEventListener('mousedown', e => e.stopPropagation());
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'widget-remove-btn';
+  removeBtn.title = 'Remove widget';
+  removeBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  removeBtn.addEventListener('click', () => hideWidget(id));
+
+  ctrl.appendChild(handle);
+  ctrl.appendChild(removeBtn);
+  card.appendChild(ctrl);
+}
+
+function hideWidget(id) {
+  const card = document.querySelector(`[data-widget-id="${id}"]`);
+  if (card) card.classList.add('widget-hidden');
+  storeGet(STORE_KEYS.widgetLayout, { hidden: [] }).then(layout => {
+    const hidden = new Set(layout.hidden || []);
+    hidden.add(id);
+    storeSet(STORE_KEYS.widgetLayout, { hidden: Array.from(hidden) });
+    renderWidgetManager();
+  });
+}
+
+function showWidget(id) {
+  const card = document.querySelector(`[data-widget-id="${id}"]`);
+  if (card) card.classList.remove('widget-hidden');
+  storeGet(STORE_KEYS.widgetLayout, { hidden: [] }).then(layout => {
+    const hidden = new Set(layout.hidden || []);
+    hidden.delete(id);
+    storeSet(STORE_KEYS.widgetLayout, { hidden: Array.from(hidden) });
+    renderWidgetManager();
+  });
+}
+
+function renderWidgetManager() {
+  const mgr = document.getElementById('widget-manager');
+  if (!mgr) return;
+  mgr.innerHTML = '';
+  Object.entries(WIDGET_NAMES).forEach(([id, label]) => {
+    const card = document.querySelector(`[data-widget-id="${id}"]`);
+    const isHidden = card ? card.classList.contains('widget-hidden') : false;
+    const item = document.createElement('div');
+    item.className = 'widget-manager-item';
+    item.innerHTML = `<span>${label}</span>`;
+    const btn = document.createElement('button');
+    btn.className = `widget-visibility-toggle${isHidden ? ' is-hidden' : ''}`;
+    btn.textContent = isHidden ? 'Show' : 'Hide';
+    btn.addEventListener('click', () => {
+      if (isHidden) showWidget(id);
+      else hideWidget(id);
+    });
+    item.appendChild(btn);
+    mgr.appendChild(item);
+  });
+}
+
+let _draggedWidget = null;
+
+function onWidgetDragStart(e) {
+  _draggedWidget = this;
+  this.classList.add('being-dragged');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', this.dataset.widgetId || '');
+}
+
+function onWidgetDragEnd() {
+  _draggedWidget = null;
+  this.classList.remove('being-dragged');
+  document.querySelectorAll('.hub-col').forEach(col => col.classList.remove('drag-over'));
+  document.querySelectorAll('.widget-drop-placeholder').forEach(p => p.remove());
+}
+
+function onColDragOver(e) {
+  if (!_draggedWidget) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  this.classList.add('drag-over');
+
+  // Show placeholder at correct position
+  const existing = this.querySelector('.widget-drop-placeholder');
+  const afterEl = getDragAfterElement(this, e.clientY);
+  if (!existing) {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'widget-drop-placeholder';
+    if (afterEl) this.insertBefore(placeholder, afterEl);
+    else this.appendChild(placeholder);
+  } else {
+    if (afterEl) this.insertBefore(existing, afterEl);
+    else this.appendChild(existing);
+  }
+}
+
+function onColDragLeave(e) {
+  // Only remove if leaving the column itself, not a child
+  if (!this.contains(e.relatedTarget)) {
+    this.classList.remove('drag-over');
+    this.querySelectorAll('.widget-drop-placeholder').forEach(p => p.remove());
+  }
+}
+
+function onColDrop(e) {
+  e.preventDefault();
+  if (!_draggedWidget) return;
+  this.classList.remove('drag-over');
+  this.querySelectorAll('.widget-drop-placeholder').forEach(p => p.remove());
+
+  const afterEl = getDragAfterElement(this, e.clientY);
+  if (afterEl) this.insertBefore(_draggedWidget, afterEl);
+  else this.appendChild(_draggedWidget);
+
+  _draggedWidget.classList.remove('being-dragged');
+  _draggedWidget = null;
+}
+
+function getDragAfterElement(col, y) {
+  const draggables = [...col.querySelectorAll('[data-widget-id]:not(.being-dragged)')];
+  return draggables.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) {
+      return { offset, element: child };
+    }
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+/* ══════════════════════════════════════
+   API Key Test
+   ══════════════════════════════════════ */
+(function initApiKeyTest() {
+  document.addEventListener('DOMContentLoaded', () => {}, { once: true });
+  // Hook via delegation since config section may not exist at module parse time
+  document.addEventListener('click', async e => {
+    if (e.target && e.target.id === 'btn-test-api-key') {
+      await testApiKey();
+    }
+  });
+})();
+
+async function testApiKey() {
+  const resultEl = document.getElementById('api-key-test-result');
+  const keyInput = document.getElementById('llm-api-key');
+  const providerSel = document.getElementById('llm-provider');
+  const btn = document.getElementById('btn-test-api-key');
+  if (!resultEl || !keyInput) return;
+
+  const key = keyInput.value.trim();
+  const provider = providerSel ? providerSel.value : '';
+
+  if (!key) {
+    resultEl.className = 'api-key-test-result err';
+    resultEl.textContent = 'Please enter an API key first.';
+    return;
+  }
+
+  resultEl.className = 'api-key-test-result loading';
+  resultEl.textContent = 'Testing…';
+  if (btn) btn.disabled = true;
+
+  try {
+    // First try the gateway's test endpoint
+    const gwResp = await fetch(`${GW_HTTP}/api/test-key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, key }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (gwResp.ok) {
+      const data = await gwResp.json();
+      if (data.ok) {
+        resultEl.className = 'api-key-test-result ok';
+        resultEl.textContent = `✓ Valid${data.model ? ' — model: ' + data.model : ''}`;
+        return;
+      } else {
+        resultEl.className = 'api-key-test-result err';
+        resultEl.textContent = `✗ ${data.error || 'Invalid key'}`;
+        return;
+      }
+    }
+  } catch { /* gateway offline, fall through to direct check */ }
+
+  // Direct validation: minimal API call per provider
+  try {
+    let testUrl, headers;
+    if (provider === 'openai' || provider === 'custom') {
+      testUrl = 'https://api.openai.com/v1/models';
+      headers = { Authorization: `Bearer ${key}` };
+    } else if (provider === 'anthropic') {
+      testUrl = 'https://api.anthropic.com/v1/models';
+      headers = { 'x-api-key': key, 'anthropic-version': '2023-06-01' };
+    } else if (provider === 'gemini') {
+      testUrl = `https://generativelanguage.googleapis.com/v1/models?key=${encodeURIComponent(key)}`;
+      headers = {};
+    } else if (provider === 'mistral') {
+      testUrl = 'https://api.mistral.ai/v1/models';
+      headers = { Authorization: `Bearer ${key}` };
+    } else if (provider === 'deepseek') {
+      testUrl = 'https://api.deepseek.com/models';
+      headers = { Authorization: `Bearer ${key}` };
+    } else {
+      resultEl.className = 'api-key-test-result err';
+      resultEl.textContent = 'Cannot test this provider directly — gateway offline.';
+      return;
+    }
+    const resp = await fetch(testUrl, { headers, signal: AbortSignal.timeout(8000) });
+    if (resp.ok || resp.status === 401 === false) {
+      resultEl.className = 'api-key-test-result ok';
+      resultEl.textContent = '✓ Key accepted by API';
+    } else {
+      resultEl.className = 'api-key-test-result err';
+      resultEl.textContent = `✗ Rejected (HTTP ${resp.status})`;
+    }
+  } catch (err) {
+    resultEl.className = 'api-key-test-result err';
+    resultEl.textContent = `✗ ${err.message || 'Connection failed'}`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 
 /* ══════════════════════════════════════
    Hide Chrome NTP attribution footer

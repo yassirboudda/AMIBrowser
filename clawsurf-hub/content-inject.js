@@ -4,14 +4,25 @@
 (() => {
   if (location.protocol === 'chrome-extension:' || location.protocol === 'chrome:') return;
 
+  // Keep noisy diagnostics disabled by default for better page performance.
+  const AMI_DEBUG = (() => {
+    try {
+      return localStorage.getItem('ami_fab_debug') === '1';
+    } catch {
+      return false;
+    }
+  })();
+
   /* ── Dev logging with visual toast ── */
   function devLog(...args) {
+    if (!AMI_DEBUG) return;
     console.log(`%c[AMI-fab]`, 'color:#f9a8d4;font-weight:bold', ...args);
     showDebugToast(args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' '));
   }
 
   /* ── Visual debug toast (shows automation progress on screen) ── */
   function showDebugToast(text) {
+    if (!AMI_DEBUG) return;
     let container = document.getElementById('ami-debug-toasts');
     if (!container) {
       container = document.createElement('div');
@@ -32,6 +43,68 @@
   /* ── State ── */
   let expanded = false;
   let chatHistory = [];
+  let chatRequestInFlight = false;
+  let pageActionQueue = Promise.resolve();
+
+  function enqueuePageActions(actions) {
+    pageActionQueue = pageActionQueue
+      .then(() => executePageActions(actions))
+      .catch(err => {
+        addMiniMsg('agent', `⚠️ Action execution failed: ${err?.message || String(err)}`);
+      });
+    return pageActionQueue;
+  }
+
+  async function callGatewayChat(payload, options = {}) {
+    const timeoutMs = Number(options.timeoutMs || 20000);
+    const retries = Number(options.retries || 1);
+    const endpoint = 'http://127.0.0.1:18789/api/chat';
+
+    let lastError = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+
+        const raw = await resp.text();
+        let data = null;
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch (_) {
+          data = { reply: raw || '' };
+        }
+
+        if (!resp.ok) {
+          const msg = data?.error || data?.message || `HTTP ${resp.status}`;
+          // Retry transient gateway/server errors.
+          if (resp.status >= 500 && attempt < retries) {
+            await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+            continue;
+          }
+          throw new Error(msg);
+        }
+
+        return data;
+      } catch (err) {
+        lastError = err;
+        const aborted = err?.name === 'AbortError';
+        const transient = aborted || /network|failed to fetch|timeout/i.test(String(err?.message || err));
+        if (attempt < retries && transient) {
+          await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+          continue;
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    throw lastError || new Error('Gateway request failed');
+  }
 
   /* ── FAB (Floating Action Button) ── */
   const fab = document.createElement('div');
@@ -121,6 +194,16 @@
 
   function loadSharedHistory() {
     if (typeof chrome === 'undefined' || !chrome.storage) return;
+
+    // Initialize Google auth session monitoring
+    if (isGoogleLoginPage()) {
+      suggestStaySignedIn();
+    }
+    if (isGoogleSheetsPage()) {
+      ensureSessionPersistence();
+      monitorAuthStateChanges();
+    }
+
     chrome.storage.local.get('ami_chat_history', data => {
       const history = data.ami_chat_history || [];
       // Show the last 10 messages from hub for context continuity
@@ -248,7 +331,12 @@
     const input = document.getElementById('csm-input');
     const text = input.value.trim();
     if (!text) return;
+    if (chatRequestInFlight) {
+      addMiniMsg('agent', '⏳ A request is already running. Please wait for it to finish.');
+      return;
+    }
     input.value = '';
+    chatRequestInFlight = true;
 
     addMiniMsg('user', text);
 
@@ -257,6 +345,10 @@
     const payload = {
       message: text,
       source: 'fab',
+      history: chatHistory.slice(-20).map(m => ({
+        role: m.role === 'agent' ? 'assistant' : m.role,
+        content: m.text,
+      })),
       pageContext: {
         title: ctx.title,
         url: ctx.url,
@@ -275,31 +367,418 @@
     msgs.appendChild(typing);
     msgs.scrollTop = msgs.scrollHeight;
 
-    fetch('http://127.0.0.1:18789/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    .then(r => r.json())
-    .then(data => {
+    callGatewayChat(payload, { timeoutMs: 20000, retries: 1 })
+    .then(async data => {
       typing.remove();
       const reply = data.reply || data.message || JSON.stringify(data);
       addMiniMsg('agent', reply);
 
       // Execute any returned actions on the page
-      if (data.actions) executePageActions(data.actions);
+      if (data.actions) await enqueuePageActions(data.actions);
 
       // Auto-memory: save exchange to local memory
       fabAutoRemember(text, reply);
     })
-    .catch(() => {
+    .catch(err => {
       typing.remove();
-      addMiniMsg('agent', '⚠️ Gateway offline. Start it with: `node gateway.js`');
+      addMiniMsg('agent', `⚠️ Gateway request failed: ${err?.message || 'offline/unreachable'}`);
+    })
+    .finally(() => {
+      chatRequestInFlight = false;
     });
   }
 
+  function isGoogleSheetsPage() {
+    return location.hostname === 'docs.google.com' && location.pathname.includes('/spreadsheets');
+  }
+
+  function isExcelWebPage() {
+    const host = location.hostname;
+    return host.includes('excel.office.com') || host.includes('office.live.com');
+  }
+
+  function isSpreadsheetPage() {
+    return isGoogleSheetsPage() || isExcelWebPage();
+  }
+
+  /* ══════════════════════════════════════
+     Google Sheets Authentication & Session Persistence
+     ══════════════════════════════════════ */
+
+  function isGoogleLoginPage() {
+    return location.hostname === 'accounts.google.com';
+  }
+
+  function isGoogleSheetAuthenticated() {
+    // Check if user is logged into Google Sheets by looking for auth-dependent elements
+    // 1. User profile button exists (top-right corner)
+    const profileBtn = document.querySelector('[aria-label*="Google Account"], [data-tooltip*="Account"]');
+    if (profileBtn) return true;
+
+    // 2. Check for presence of sheets toolbar (which only shows when authenticated)
+    const sheetsToolbar = document.querySelector('[role="toolbar"], .goog-menu-button');
+    if (isGoogleSheetsPage() && sheetsToolbar) return true;
+
+    // 3. Check if we can access file menu (sheets-specific auth check)
+    const fileMenu = document.querySelector('[aria-label="File"]');
+    if (isGoogleSheetsPage() && fileMenu) return true;
+
+    // 4. If on Google Sheets but no authenticated indicators found, likely logged out
+    if (isGoogleSheetsPage()) {
+      const noAuthRedirects = document.querySelector('[href*="accounts.google.com"], [href*="/signin"]');
+      return !noAuthRedirects;
+    }
+
+    return false;
+  }
+
+  function hasGoogleSheetSignInBlocker() {
+    if (!isGoogleSheetsPage()) return false;
+    const signInButton = document.querySelector('a[href*="accounts.google.com"], button[aria-label*="Sign in" i], [role="button"][aria-label*="Sign in" i]');
+    const signedOutText = [...document.querySelectorAll('div, span, p, h1, h2')].some(el => {
+      const text = (el.textContent || '').trim();
+      return text === 'Signed out' || /You have been signed out\./i.test(text);
+    });
+    return !!signInButton || signedOutText;
+  }
+
+  function suggestStaySignedIn() {
+    // On Google login page, suggest "Stay signed in" to maintain sessions
+    if (!isGoogleLoginPage()) return;
+
+    const staySignedCheckbox = document.querySelector('input[name="TL_stay_signed_in"], input[aria-label*="Stay signed in"]');
+    if (staySignedCheckbox && !staySignedCheckbox.checked) {
+      devLog('Google: Found "Stay signed in" option. Checking it for session persistence...');
+      staySignedCheckbox.click();
+      addMiniMsg('agent', '✅ Enabled "Stay signed in" on Google. You will remain logged in even after closing the browser.');
+    }
+
+    // Store that we've seen a Google login and should monitor auth state
+    chrome.storage.local.set({ 'ami_google_auth_time': Date.now() });
+  }
+
+  function ensureSessionPersistence() {
+    // Called on Google Sheets pages to ensure session is durable
+    if (!isGoogleSheetsPage()) return;
+
+    const isAuthenticated = isGoogleSheetAuthenticated();
+    chrome.storage.local.get('ami_google_auth_status', data => {
+      const wasAuthenticated = data.ami_google_auth_status?.authenticated;
+
+      if (isAuthenticated && !wasAuthenticated) {
+        // Just logged in - store this state
+        chrome.storage.local.set({ ami_google_auth_status: { authenticated: true, timestamp: Date.now() } });
+        devLog('✅ Google Sheets auth detected and stored in session');
+      } else if (!isAuthenticated && wasAuthenticated) {
+        // Was logged in but now logged out (e.g., after browser close)
+        devLog('⚠️ Google Sheets session lost. User will need to re-login.');
+        chrome.storage.local.set({ ami_google_auth_status: { authenticated: false, timestamp: Date.now() } });
+
+        // Show helpful message to user
+        addMiniMsg('agent',
+          '🔐 Your Google Sheets session has expired. Please log back in:\n' +
+          '1. Click your profile icon (top-right)\n' +
+          '2. Sign in with your Google account\n' +
+          '3. Check "Stay signed in" to keep the session longer\n' +
+          '4. Return here and retry your task'
+        );
+      }
+    });
+  }
+
+  function monitorAuthStateChanges() {
+    // Watch for Google authentication state changes on the page
+    if (!isGoogleSheetsPage() && !isGoogleLoginPage()) return;
+
+    // Periodically check auth state and log changes
+    setInterval(() => {
+      const isAuth = isGoogleSheetAuthenticated();
+      chrome.storage.local.get('ami_google_auth_status', data => {
+        const stored = data.ami_google_auth_status?.authenticated;
+        if (isAuth !== stored) {
+          ensureSessionPersistence();
+        }
+      });
+    }, 5000); // Check every 5 seconds
+
+    // Also check on critical DOM changes (login/logout happened)
+    const observer = new MutationObserver(() => {
+      ensureSessionPersistence();
+    });
+
+    // Observe profile area and dialog changes
+    const profileArea = document.querySelector('[aria-label*="Account"], [aria-label*="Profile"]');
+    if (profileArea) {
+      observer.observe(profileArea, { attributes: true, childList: true, subtree: true });
+    }
+
+    // Listen for Google's internal sign-out events
+    window.addEventListener('storage', (e) => {
+      if (e.key?.includes('goog') || e.key?.includes('auth')) {
+        ensureSessionPersistence();
+      }
+    });
+  }
+
+  function isVisibleEl(el) {
+    return !!el && (el.offsetParent !== null || el.getClientRects().length > 0);
+  }
+
+  function getSpreadsheetSelectedCell() {
+    const selected = document.querySelector('[role="gridcell"][aria-selected="true"]');
+    return isVisibleEl(selected) ? selected : null;
+  }
+
+  function setMiniComposerLocked(locked) {
+    const input = document.getElementById('csm-input');
+    const send = document.getElementById('csm-send');
+    const panel = document.getElementById('ami-browser-mini');
+    if (input) {
+      input.disabled = !!locked;
+      if (locked) input.blur();
+    }
+    if (send) send.disabled = !!locked;
+    if (panel) {
+      panel.style.pointerEvents = locked ? 'none' : '';
+      panel.style.opacity = locked ? '0.86' : '';
+    }
+  }
+
+  function prepareSpreadsheetTypingFocus() {
+    // Blur any focused element in the content script (chat input, buttons, etc.)
+    // The actual cell focus is handled via trusted CDP mouse click in background.js,
+    // because content-script clicks don't reliably transfer OS keyboard focus
+    // to Google Sheets' canvas-based grid.
+    const active = document.activeElement;
+    if (active && typeof active.blur === 'function') active.blur();
+  }
+
+  function dispatchSpreadsheetCommit(target) {
+    const events = [
+      new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }),
+      new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }),
+      new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }),
+    ];
+    for (const event of events) {
+      try { (target || document).dispatchEvent(event); } catch (_) { /* ignore */ }
+      try { document.dispatchEvent(event); } catch (_) { /* ignore */ }
+    }
+  }
+
+  function autoSelectSpreadsheetStartCell() {
+    const already = getSpreadsheetSelectedCell();
+    if (already) return already;
+
+    // Prefer A2 so we start below headers for typical tabular sheets.
+    const preferred = [
+      '[role="gridcell"][aria-label^="A2"]',
+      '[role="gridcell"][aria-label*="A2"]',
+      '[role="gridcell"][data-row="1"][data-col="0"]',
+    ];
+    for (const sel of preferred) {
+      const el = document.querySelector(sel);
+      if (isVisibleEl(el)) {
+        el.click();
+        return el;
+      }
+    }
+
+    // Fallback: first visible gridcell that is not row 1.
+    const cells = [...document.querySelectorAll('[role="gridcell"]')].filter(isVisibleEl);
+    const fallback = cells.find(c => {
+      const label = (c.getAttribute('aria-label') || '').toUpperCase();
+      return !/^[A-Z]+1\b/.test(label);
+    }) || cells[0] || null;
+    if (fallback) fallback.click();
+    return fallback;
+  }
+
+  /* ── Write a single value into the currently selected Google Sheets / Excel cell ──
+     Google Sheets ignores el.value assignments and generic input/change events.
+     The only reliable path is:
+       1. Focus the formula bar (#t-formula-bar-input in Sheets)
+       2. Select all existing content
+       3. document.execCommand('insertText') — this goes through the browser's
+          real text-input pipeline which Sheets listens to
+       4. Dispatch Enter on document (not the element) to commit + auto-advance row
+  ── */
+  async function writeToCurrentSheetCell(value) {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const str = String(value);
+
+    // ── Google Sheets: formula bar textarea ──
+    // Try all known selectors for the formula bar input
+    const formulaBarSelectors = [
+      '#t-formula-bar-input',
+      'textarea[id^="t-formula-bar"]',
+      '[aria-label="Formula bar"]',
+      '[aria-label="formula bar"]',
+      'textarea[aria-label*="formula" i]',
+      'input[aria-label*="formula" i]',
+    ];
+    let formulaBar = null;
+    for (const sel of formulaBarSelectors) {
+      const el = document.querySelector(sel);
+      if (isVisibleEl(el)) { formulaBar = el; break; }
+    }
+
+    if (formulaBar) {
+      formulaBar.click();
+      formulaBar.focus();
+      await sleep(60);
+      // Select all existing text so insertText replaces it
+      if (typeof formulaBar.select === 'function') formulaBar.select();
+      else formulaBar.setSelectionRange(0, (formulaBar.value || formulaBar.textContent || '').length);
+      // execCommand('insertText') fires the real input event pipeline that Sheets responds to
+      const inserted = document.execCommand('insertText', false, str);
+      if (!inserted || formulaBar.value !== str) {
+        devLog('writeToCurrentSheetCell: execCommand failed, falling back to InputEvent');
+        formulaBar.value = str;
+        formulaBar.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: str }));
+        formulaBar.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      await sleep(60);
+      dispatchSpreadsheetCommit(formulaBar);
+      await sleep(260);
+      return true;
+    }
+
+    // ── Fallback: In-cell rich text editor (appears after dblclick) ──
+    const richEditor = document.querySelector('#waffle-rich-text-editor');
+    if (isVisibleEl(richEditor)) {
+      richEditor.click();
+      richEditor.focus();
+      await sleep(60);
+      document.execCommand('selectAll', false);
+      document.execCommand('insertText', false, str);
+      await sleep(60);
+      dispatchSpreadsheetCommit(richEditor);
+      await sleep(260);
+      return true;
+    }
+
+    // ── Last resort: click cell, wait for formula bar to appear, then write ──
+    const cell = getSpreadsheetSelectedCell();
+    if (cell) {
+      cell.click();
+      await sleep(120);
+      for (const sel of formulaBarSelectors) {
+        const fb = document.querySelector(sel);
+        if (isVisibleEl(fb)) {
+          fb.click(); fb.focus();
+          await sleep(50);
+          if (typeof fb.select === 'function') fb.select();
+          document.execCommand('insertText', false, str);
+          await sleep(60);
+          if (fb.value !== str) {
+            fb.value = str;
+            fb.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: str }));
+            fb.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          dispatchSpreadsheetCommit(fb);
+          await sleep(260);
+          return true;
+        }
+      }
+    }
+
+    devLog('writeToCurrentSheetCell: No writable input found');
+    return false;
+  }
+
+  // Legacy wrapper — kept for the 'type' action handler
+  async function typeIntoSpreadsheetCell(text) {
+    const cell = getSpreadsheetSelectedCell();
+    if (!cell) autoSelectSpreadsheetStartCell();
+    return writeToCurrentSheetCell(text);
+  }
+
+  function parseDateValue(raw) {
+    const s = String(raw || '').trim();
+    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      const d = Number(m[1]);
+      const mo = Number(m[2]);
+      const y = Number(m[3]);
+      return new Date(y, mo - 1, d);
+    }
+    m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (m) {
+      const y = Number(m[1]);
+      const mo = Number(m[2]);
+      const d = Number(m[3]);
+      return new Date(y, mo - 1, d);
+    }
+    const parsed = new Date(s);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  function formatDateValue(d, template) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = String(d.getFullYear());
+    if (String(template || '').includes('-')) return `${year}-${month}-${day}`;
+    return `${day}/${month}/${year}`;
+  }
+
+  function fillSpreadsheetDateSeries(startDate, endDate, template) {
+    const out = [];
+    const s = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    const e = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+    if (s > e) return out;
+    for (let cur = s; cur <= e; cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1)) {
+      out.push(formatDateValue(cur, template));
+      if (out.length > 2000) break;
+    }
+    return out;
+  }
+
+  async function typeSpreadsheetSeries(values) {
+    if (!Array.isArray(values) || !values.length) {
+      addMiniMsg('agent', '⚠️ No values to fill in spreadsheet');
+      return;
+    }
+
+    if (isGoogleSheetsPage() && (!isGoogleSheetAuthenticated() || hasGoogleSheetSignInBlocker())) {
+      addMiniMsg('agent', '⚠️ Google Sheets is signed out. Sign in first, wait for the sheet to reconnect, then retry the spreadsheet action.');
+      return;
+    }
+
+    devLog(`typeSpreadsheetSeries: filling ${values.length} values`);
+    setMiniComposerLocked(true);
+    // Blur chat so it cannot intercept keystokes.
+    prepareSpreadsheetTypingFocus();
+
+    addMiniMsg('agent', `📝 Typing ${values.length} values into sheet…`);
+
+    try {
+      if (!getSpreadsheetSelectedCell()) autoSelectSpreadsheetStartCell();
+
+      let filled = 0;
+      for (const value of values) {
+        const ok = await writeToCurrentSheetCell(value);
+        if (!ok) break;
+        filled++;
+      }
+
+      if (filled === values.length) {
+        addMiniMsg('agent', `✅ Filled all ${filled} cells`);
+        return;
+      }
+
+      if (filled > 0) {
+        addMiniMsg('agent', `⚠️ Filled ${filled} of ${values.length} cells. Click the start cell and retry.`);
+        return;
+      }
+
+      addMiniMsg('agent', '⚠️ Could not type into spreadsheet cells. Click the first target cell and retry.');
+    } finally {
+      setMiniComposerLocked(false);
+    }
+  }
+
   /* ── Execute actions on the current page ── */
-  function executePageActions(actions) {
+  async function executePageActions(actions) {
     if (!Array.isArray(actions)) return;
     for (const action of actions) {
       switch (action.type) {
@@ -323,9 +802,59 @@
           break;
         }
         case 'type': {
+          const selectorText = String(action.selector || '').toLowerCase();
+          const looksGenericInput = !selectorText || /input\[type=['"]text['"]\]|text input|input field|textbox|text field/.test(selectorText);
+
+          if (isSpreadsheetPage() && looksGenericInput) {
+            const ok = await typeIntoSpreadsheetCell(action.text || '');
+            if (ok) addMiniMsg('agent', '✅ Typed into spreadsheet cell');
+            else addMiniMsg('agent', '⚠️ Could not type into spreadsheet cell. Click a target cell and retry.');
+            break;
+          }
+
           const el = findElement(action.selector);
-          if (el) { highlightElement(el); el.focus(); el.value = action.text; el.dispatchEvent(new Event('input', { bubbles: true })); addMiniMsg('agent', `✅ Typed into: ${action.selector}`); }
+          if (el) {
+            highlightElement(el);
+            el.focus();
+            if ('value' in el) el.value = action.text;
+            else el.textContent = action.text;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            addMiniMsg('agent', `✅ Typed into: ${action.selector}`);
+          }
           else addMiniMsg('agent', `⚠️ Could not find input: "${action.selector}"`);
+          break;
+        }
+        case 'spreadsheet-fill-values': {
+          if (!isSpreadsheetPage()) {
+            addMiniMsg('agent', '⚠️ Spreadsheet fill works on Google Sheets or Excel Web pages only.');
+            break;
+          }
+          const vals = action.values;
+          if (!Array.isArray(vals) || !vals.length) {
+            addMiniMsg('agent', '⚠️ No values provided for spreadsheet fill.');
+            break;
+          }
+          await typeSpreadsheetSeries(vals);
+          break;
+        }
+        case 'spreadsheet-fill-dates': {
+          if (!isSpreadsheetPage()) {
+            addMiniMsg('agent', '⚠️ Spreadsheet fill works on Google Sheets or Excel Web pages only.');
+            break;
+          }
+          const s = parseDateValue(action.startDate);
+          const e = parseDateValue(action.endDate);
+          if (!s || !e) {
+            addMiniMsg('agent', `⚠️ Invalid date range: ${action.startDate} → ${action.endDate}`);
+            break;
+          }
+          const values = fillSpreadsheetDateSeries(s, e, action.startDate || '');
+          if (!values.length) {
+            addMiniMsg('agent', `⚠️ Start date must be <= end date: ${action.startDate} → ${action.endDate}`);
+            break;
+          }
+          addMiniMsg('agent', `📅 Filling ${values.length} dates from ${values[0]} to ${values[values.length - 1]}`);
+          await typeSpreadsheetSeries(values);
           break;
         }
         case 'scroll':
@@ -498,14 +1027,12 @@
         case 'summarize-page': {
           const text = document.body.innerText.slice(0, 5000);
           addMiniMsg('agent', `Sending page text to AI for summary…`);
-          fetch('http://127.0.0.1:18789/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: `Summarize this page content:\n\n${text}`, source: 'fab-summarize' }),
-          })
-          .then(r => r.json())
-          .then(d => addMiniMsg('agent', d.reply || 'Could not summarize'))
-          .catch(() => addMiniMsg('agent', '⚠️ Gateway offline'));
+          try {
+            const d = await callGatewayChat({ message: `Summarize this page content:\n\n${text}`, source: 'fab-summarize' }, { timeoutMs: 25000, retries: 1 });
+            addMiniMsg('agent', d.reply || d.message || 'Could not summarize');
+          } catch (err) {
+            addMiniMsg('agent', `⚠️ Gateway request failed: ${err?.message || 'offline/unreachable'}`);
+          }
           break;
         }
         case 'open-hub': {
@@ -678,19 +1205,64 @@
       selector = selector.replace(/^text=/i, '').trim();
     }
 
+    const host = location.hostname;
+
+    // LLM sometimes emits Google-specific nth selector on YouTube pages.
+    if (typeof selector === 'string' && host.includes('youtube.com')) {
+      const gNth = selector.match(/^#search\s+\.g:nth-of-type\((\d+)\)\s+a$/i);
+      if (gNth) {
+        const n = Math.max(1, parseInt(gNth[1], 10) || 1);
+        const ytCards = [...document.querySelectorAll('ytd-playlist-renderer, ytd-video-renderer, ytd-radio-renderer')]
+          .filter(el => el.offsetParent !== null)
+          .map(card => card.querySelector('a#video-title, a#thumbnail, a[href*="watch"], a[href*="playlist"]'))
+          .filter(Boolean);
+        if (ytCards[n - 1]) return ytCards[n - 1];
+      }
+    }
+
     // 1. Try CSS selector first
-    try { const el = document.querySelector(selector); if (el) return el; } catch {}
+    try {
+      const el = document.querySelector(selector);
+      if (el) {
+        if (isGoogleSheetsPage()) {
+          const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+          if (el.id === 'docs-title-input' || aria.includes('rename')) {
+            if (/input\[type=['"]text['"]\]|text input|input field|textbox/i.test(String(selector))) {
+              const spreadsheetEditor = getSpreadsheetEditorCandidate();
+              if (spreadsheetEditor && spreadsheetEditor !== el) return spreadsheetEditor;
+            }
+          }
+        }
+        return el;
+      }
+    } catch {}
 
     // 2. Handle coordinate-based clicking (from LLM: {x, y})
     if (typeof selector === 'object' && selector.x != null && selector.y != null) {
       return document.elementFromPoint(selector.x, selector.y);
     }
 
-    // 3. Handle "nth result/link/item" patterns
-    const nthMatch = selector.match(/(?:(\d+)(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last)\s*(?:result|link|item|entry|option|button|element)/i);
+    // 3. Handle "nth result/link/item/playlist" patterns
+    const nthMatch = selector.match(/(?:(\d+)(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last)\s*(?:result|link|item|entry|option|button|element|playlist)/i);
     if (nthMatch) {
       const ordinals = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, last: -1 };
       let n = nthMatch[1] ? parseInt(nthMatch[1]) : ordinals[nthMatch[0].split(/\s+/)[0].toLowerCase()] || 1;
+      const wantPlaylist = /playlist/i.test(selector);
+
+      // YouTube results (playlist/video cards)
+      if (host.includes('youtube.com')) {
+        const ytRenderers = wantPlaylist
+          ? [...document.querySelectorAll('ytd-playlist-renderer, ytd-radio-renderer')]
+          : [...document.querySelectorAll('ytd-playlist-renderer, ytd-video-renderer, ytd-radio-renderer')];
+        const ytResults = ytRenderers
+          .filter(el => el.offsetParent !== null)
+          .map(card => card.querySelector('a#video-title, a#thumbnail, a[href*="watch"], a[href*="playlist"]'))
+          .filter(Boolean);
+        if (ytResults.length) {
+          const idx = n === -1 ? ytResults.length - 1 : n - 1;
+          if (ytResults[idx]) return ytResults[idx];
+        }
+      }
 
       // Google search results
       const googleResults = document.querySelectorAll('#search .g h3, #search .g a[href]:not([href^="javascript"]):not([role])');
@@ -864,6 +1436,7 @@
   function clickFirstResult() {
     devLog('Attempting to click first result on:', location.hostname);
     const host = location.hostname;
+    const humanizedDelay = 1100 + Math.floor(Math.random() * 1100);
 
     // YouTube
     if (host.includes('youtube.com')) {
@@ -891,12 +1464,22 @@
 
     // Google
     if (host.includes('google.')) {
-      const googleSel = '#search .g a, #rso .g a, .yuRUbf a';
-      const el = document.querySelector(googleSel);
+      const captchaDetected = !!document.querySelector('#captcha, form#captcha-form, div.g-recaptcha, iframe[src*="recaptcha"]');
+      if (captchaDetected) {
+        devLog('Google captcha detected; skipping automated click to avoid bot escalation');
+        return false;
+      }
+      const googleCandidates = [...document.querySelectorAll('#search .g a, #rso .g a, .yuRUbf a')]
+        .filter(a => {
+          if (!a.href) return false;
+          try { return !/google\./i.test(new URL(a.href).hostname); }
+          catch { return false; }
+        });
+      const el = googleCandidates[0] || null;
       if (el) {
         devLog(`Google first result found: "${el.textContent?.trim().slice(0, 60)}" → ${el.href}`);
         highlightElement(el);
-        setTimeout(() => el.click(), 500);
+        setTimeout(() => el.click(), humanizedDelay);
         return true;
       }
       return false;
@@ -1016,19 +1599,34 @@
 
   // Check for pending actions when page loads
   devLog('Content script loaded on:', location.href);
+  const shouldAutoDismissOnLoad = /(^|\.)youtube\.com$|(^|\.)google\./i.test(location.hostname);
+
   if (document.readyState === 'complete') {
     checkPendingActions();
-    // Auto-dismiss cookie/tracking consent on every page
-    setTimeout(() => dismissCookieConsent(), 2000);
-    setTimeout(() => dismissCookieConsent(), 5000); // retry for late-rendering dialogs
+    if (shouldAutoDismissOnLoad) {
+      setTimeout(() => dismissCookieConsent(), 2000);
+      setTimeout(() => dismissCookieConsent(), 5000); // retry for late-rendering dialogs
+    }
   } else {
     window.addEventListener('load', () => {
       devLog('Page load complete, checking pending actions...');
       checkPendingActions();
-      // Auto-dismiss cookie/tracking consent on every page
-      setTimeout(() => dismissCookieConsent(), 2000);
-      setTimeout(() => dismissCookieConsent(), 5000); // retry for late-rendering dialogs
+      if (shouldAutoDismissOnLoad) {
+        setTimeout(() => dismissCookieConsent(), 2000);
+        setTimeout(() => dismissCookieConsent(), 5000); // retry for late-rendering dialogs
+      }
     });
+  }
+
+  /* ══════════════════════════════════════
+     Initialize Google Sheets Session Persistence
+     ══════════════════════════════════════ */
+  if (isGoogleSheetsPage()) {
+    ensureSessionPersistence();
+    monitorAuthStateChanges();
+  }
+  if (isGoogleLoginPage()) {
+    suggestStaySignedIn();
   }
 
   /* ══════════════════════════════════════
@@ -1041,6 +1639,7 @@
       '.ytp-ad-skip-button-modern',
       'button.ytp-skip-ad-button',
       '.ytp-ad-skip-button-slot button',
+      '.ytp-ad-skip-button-slot',
       '.ytp-ad-overlay-close-button',
       'button[class*="skip-ad"]',
       '.videoAdUiSkipButton',
@@ -1049,36 +1648,84 @@
       '.ytp-ad-skip-button-container',
       'button.ytp-ad-skip-button-modern',
       '.ytp-preview-ad__link-button',
+      '.ytp-skip-ad-button-text',
       '[id="skip-button:8"] button',
       '[id^="skip-button"] button',
       'button[id^="skip-button"]',
       '.ytp-ad-skip-button-modern.ytp-button',
+      // 2025 YouTube button labels
+      '[class*="SkipButton"]',
+      '[class*="skip-button"]',
     ];
 
+    // Detect if an ad indicator is present in the player
+    const adIndicatorSelectors = [
+      '.ytp-ad-player-overlay-layout',
+      '.ytp-ad-simple-ad-badge',
+      '.ytp-ad-duration-remaining',
+      '.ytp-ad-skip-button-slot',
+      '.ytp-ad-module',
+      '.video-ads.ytp-ad-module',
+      '.ytp-ad-skip-button-modern',
+    ];
+
+    function isAdPlaying() {
+      return adIndicatorSelectors.some(s => {
+        try { return !!document.querySelector(s); } catch { return false; }
+      });
+    }
+
+    let lastAdCheckTs = 0;
     function trySkipAd() {
-      // 1. Try known CSS selectors
+      const now = Date.now();
+      if (now - lastAdCheckTs < 600) return false;
+      lastAdCheckTs = now;
+
+      if (!isAdPlaying()) return false;
+
+      // 1. Try known CSS selectors — use isConnected + computedStyle instead of offsetParent
       for (const sel of skipAdSelectors) {
         try {
           const btn = document.querySelector(sel);
-          if (btn && btn.offsetParent !== null) {
-            devLog('AMI Shield: Skipping YouTube ad via selector:', sel);
+          if (btn && btn.isConnected) {
+            const cs = getComputedStyle(btn);
+            // Accept if not explicitly hidden; offsetParent check is unreliable inside fixed containers
+            if (cs.display !== 'none' && cs.visibility !== 'hidden') {
+              devLog('AMI Shield: Skipping YouTube ad via selector:', sel);
+              btn.click();
+              btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+              return true;
+            }
+            // Even if computed style hidden, try clicking — YouTube sometimes hides then shows
+            devLog('AMI Shield: Force-clicking potentially hidden skip btn:', sel);
             btn.click();
             return true;
           }
         } catch (e) { /* invalid selector */ }
       }
-      // 2. Text-based fallback: find any visible button/element containing "Skip"
-      //    within the YouTube player or ad overlay area
+
+      // 2. Text-based fallback: find any button containing "Skip" text
       const playerArea = document.querySelector('.html5-video-player') || document.querySelector('#movie_player') || document.body;
       const candidates = playerArea.querySelectorAll('button, [role="button"], a.ytp-button, div[class*="skip"], span[class*="skip"]');
       for (const el of candidates) {
         const txt = (el.textContent || '').trim();
-        if (/^skip/i.test(txt) && el.offsetParent !== null) {
+        if (/^skip/i.test(txt) && el.isConnected) {
           devLog('AMI Shield: Skipping YouTube ad via text match:', txt);
           el.click();
           return true;
         }
       }
+
+      // 3. Last resort: seek video past the ad if it's a short unskippable ad
+      try {
+        const video = document.querySelector('video.html5-main-video') || document.querySelector('video');
+        if (video && video.duration && !isNaN(video.duration) && video.duration > 0 && video.duration < 60) {
+          devLog('AMI Shield: Seeking video to end to skip unskippable short ad, duration:', video.duration);
+          video.currentTime = video.duration;
+          return true;
+        }
+      } catch (e) { /* ignore */ }
+
       return false;
     }
 
@@ -1096,4 +1743,4 @@
     setInterval(trySkipAd, 1500);
   }
 
-})();
+})()

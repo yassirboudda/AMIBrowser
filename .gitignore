@@ -10,6 +10,7 @@ node_modules/
 .env.*
 .enc_key
 .connections.json
+sshkey/
 
 # OS files
 .DS_Store
