@@ -12,6 +12,13 @@ node_modules/
 .connections.json
 sshkey/
 
+# Internal credential/build docs (kept private)
+BREV_*.md
+BUILD_INFRASTRUCTURE_COMPLETE.md
+LOCAL_PREFLIGHT_CHECKLIST.md
+QUICK_START_CARD.md
+README_BUILD_INFRASTRUCTURE.md
+
 # OS files
 .DS_Store
 Thumbs.db
