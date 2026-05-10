@@ -34,7 +34,7 @@
     .model-source { font-size: 11px; color: var(--muted); margin-top: 4px; font-style: italic; }
 
     /* ── Connection status badge ── */
-    .conn-status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .conn-status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; background: #94a3b8; }
     .conn-status.active { background: #10b981; }
     .conn-status.error { background: #ef4444; }
     .conn-status.untested { background: #f59e0b; }
@@ -55,6 +55,59 @@
     .search-bar { margin-bottom: 14px; }
     .search-bar input { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 14px; }
     .search-bar input:focus { outline: none; border-color: var(--primary); }
+
+    /* Remove glass-shine ::after overlay so connection tile logos/text aren't washed out */
+    #connections-grid .card::after,
+    #saved-connections .card::after { display: none; }
+
+    /* Provider icon container – solid coloured square so all tiles look equally vibrant */
+    .provider-icon-wrap {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(147,51,234,.25);
+    }
+    .provider-icon-wrap img { filter: brightness(0) invert(1); }
+
+    /* Provider card hover effect */
+    .provider-card { transition: transform .15s, box-shadow .15s; }
+    .provider-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(147,51,234,.18); }
+
+    /* Step-1 form: stack label/input vertically and full-width */
+    #step-1 {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #step-1 label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-sec);
+      margin-top: 8px;
+    }
+    #step-1 label:first-child { margin-top: 0; }
+    #step-1 input, #step-1 textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 12px;
+      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      background: var(--bg-hover);
+      font-size: 13px;
+      color: var(--text);
+      font-family: inherit;
+      outline: none;
+      margin: 0;
+    }
+    #step-1 input:focus, #step-1 textarea:focus { border-color: var(--primary); }
+    #step-1 #secret-hint {
+      font-size: 12px;
+      color: var(--primary);
+      line-height: 1.4;
+      padding: 0 2px;
+    }
   </style>
 </head>
 <body>
@@ -102,9 +155,10 @@
         <!-- Step 1: Enter credentials -->
         <div class="step-panel active" id="step-1">
           <label>Connection name</label>
-          <input type="text" id="connection-name" placeholder="My OpenAI Key">
-          <label style="margin-top:12px;">API Key / Secret / Token</label>
+          <input type="text" id="connection-name" placeholder="My Connection">
+          <label style="margin-top:12px;" id="secret-label">API Key / Secret / Token</label>
           <input type="password" id="connection-secret" placeholder="Enter your API key or secret">
+          <div id="secret-hint" style="font-size:12px;color:var(--text-muted);margin-top:4px;display:none;"></div>
           <label style="margin-top:12px;">Optional metadata (JSON)</label>
           <textarea id="connection-meta" rows="2" placeholder='{"baseUrl":"http://localhost:11434"}'></textarea>
         </div>

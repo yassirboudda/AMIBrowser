@@ -53,6 +53,9 @@ After V3, AMI Browser will have:
 26. [Build Priority & Effort Estimates](#26-build-priority--effort-estimates)
 27. [Smart Tab Switcher — Visual Carousel](#27-smart-tab-switcher--visual-carousel)
 28. [Zen-Style Compact Browsing — Multi-Row Tabs & Glance](#28-zen-style-compact-browsing--multi-row-tabs--glance)
+29. [V3 AI Architecture — Server-Side Proxy (No BYO Keys)](#29-v3-ai-architecture--server-side-proxy-no-byo-keys)
+30. [Replace Native Chromium "Ask AI" / Side Panel Button with AMI Chat](#30-replace-native-chromium-ask-ai--side-panel-button-with-ami-chat)
+31. [Opera-Style Chromium WebUI Takeover — Full Internal Page Redesign](#31-opera-style-chromium-webui-takeover--full-internal-page-redesign)
 
 ---
 
@@ -3252,20 +3255,40 @@ Type special keywords in the omnibox to trigger AMI-specific actions.
 2. Binaries (`.deb`, AppImage, `.rpm`, etc.) attached as release assets
 3. Browser checks `https://api.github.com/repos/{owner}/{repo}/releases/latest` on startup
 4. Compares `tag_name` against current version in `chrome://version`
-5. If newer version found → shows update badge on toolbar + notification in `chrome://settings/help`
+5. If newer version found → shows **Update button next to the search bar (omnibox)** for all users + notification in `chrome://settings/help`
 6. User clicks "Update" → downloads the asset matching their OS/arch → applies update
+
+**Search bar update button (V3 requirement):**
+- Location: right side of omnibox (always visible when update is available)
+- Label format: `Update vX.Y.Z`
+- Visibility rule: hidden by default, shown only when `latest_version > current_version`
+- Audience: all users on that release channel (`stable`, `beta`, or `dev`)
+- States:
+  - `available`: button visible, clickable
+  - `downloading`: shows progress `%`
+  - `ready_to_restart`: shows `Restart to Update`
+  - `error`: fallback to `Try Again`
+- Polling:
+  - On app launch
+  - Every 4 hours in background
+  - Manual check via `chrome://settings/help`
+
+**Version target for first V3 rollout with omnibox button:**
+- Public rollout version: **`v3.1.0`**
+- UI text example: `Update v3.1.0`
 
 **Update check endpoint (no backend needed):**
 ```
 GET https://api.github.com/repos/yassirboudda/AMIBrowser/releases/latest
-→ { "tag_name": "v3.0.2", "assets": [{ "name": "ami-browser-3.0.2-linux-x64.deb", "browser_download_url": "..." }] }
+→ { "tag_name": "v3.1.0", "assets": [{ "name": "ami-browser-3.1.0-linux-x64.deb", "browser_download_url": "..." }] }
 ```
 
 **Works with private repos** using a bundled GitHub token (read-only, scoped to releases). For public repos, no token needed (5000 req/hr with token, 60/hr without).
 
 **Update UI:**
+- Omnibox button: `Update v3.1.0` shown next to search bar when update is available
 - Toolbar badge: small green dot on AMI logo when update available
-- `chrome://settings/help` → "AMI Browser is up to date" or "Update available: v3.0.2 — [Update Now]"
+- `chrome://settings/help` → "AMI Browser is up to date" or "Update available: v3.1.0 — [Update Now]"
 - Settings toggle: "Check for updates automatically" (default: ON)
 - Update progress bar during download
 
@@ -3274,8 +3297,70 @@ GET https://api.github.com/repos/yassirboudda/AMIBrowser/releases/latest
 |------|---------|
 | `browser/ami_update_checker.cc` | Background update check service (runs every 4 hours) |
 | `browser/ami_update_checker.h` | Header |
-| `browser/ami_update_ui.cc` | Update notification bar + toolbar badge |
+| `browser/ami_update_ui.cc` | Omnibox update button + notification bar + toolbar badge |
 | `browser/resources/ami_update_page.html` | The `chrome://settings/help` update panel |
+
+#### Release Trigger Contract (What You Need So Button Appears For Everyone)
+
+For each new build, publish metadata that every client can compare against its installed version.
+
+**Minimum required fields:**
+- `latest_version` (e.g., `3.1.0`)
+- `channel` (`stable`, `beta`, `dev`)
+- `min_supported_version` (optional for forced updates)
+- `download_url` (per platform/arch)
+- `checksum_sha256`
+- `published_at`
+
+**Client-side decision logic:**
+1. Read current installed version
+2. Fetch latest metadata for user's channel
+3. If `latest_version > current_version` → show omnibox Update button
+4. If `latest_version <= current_version` → hide button
+
+**Example metadata (GitHub-only or backend response):**
+```json
+{
+  "channel": "stable",
+  "latest_version": "3.1.0",
+  "min_supported_version": "3.0.0",
+  "assets": {
+    "linux-x64-deb": {
+      "download_url": "https://github.com/yassirboudda/AMIBrowser/releases/download/v3.1.0/ami-browser-3.1.0-linux-x64.deb",
+      "checksum_sha256": "<sha256>"
+    },
+    "linux-x64-appimage": {
+      "download_url": "https://github.com/yassirboudda/AMIBrowser/releases/download/v3.1.0/ami-browser-3.1.0-linux-x64.AppImage",
+      "checksum_sha256": "<sha256>"
+    }
+  },
+  "published_at": "2026-05-10T00:00:00Z"
+}
+```
+
+#### Build/Release Workflow (Operator Checklist)
+
+When you build a new V3 version, do this in order:
+1. Build binaries (`.deb`, `.rpm`, AppImage, tar.gz)
+2. Compute SHA-256 checksums
+3. Create release tag (example: `v3.1.0`)
+4. Publish GitHub Release and upload assets
+5. Publish/update machine-readable version metadata (`latest_version`, URLs, checksums)
+6. Clients poll, detect newer version, and automatically display omnibox Update button
+
+#### GitHub vs Backend: What Is Enough?
+
+**If your goal is only "show update button for all users when new build is out":**
+- GitHub Releases + version metadata is enough
+- No mandatory backend server required
+
+**If you also need subscription control, staged rollout, analytics, or forced update policy:**
+- Add lightweight backend version API
+- Keep binaries on GitHub CDN (recommended)
+
+**Recommended architecture for V3 launch:**
+- Store binaries on GitHub Releases (fast, cheap, simple)
+- Optional backend only for policy/entitlement logic
 
 #### Phase 2: Hybrid Backend (Subscription + Delta Updates)
 
@@ -3283,12 +3368,12 @@ GET https://api.github.com/repos/yassirboudda/AMIBrowser/releases/latest
 
 **Lightweight backend API (single endpoint):**
 ```
-GET https://updates.ami.exchange/api/check?version=3.0.1&os=linux&arch=x64&channel=stable&license=xxx
+GET https://api.ami.exchange/api/check?version=3.0.1&os=linux&arch=x64&channel=stable&license=xxx
 → {
     "update_available": true,
-    "version": "3.0.2",
-    "download_url": "https://github.com/.../releases/download/v3.0.2/ami-browser-3.0.2-linux-x64.deb",
-    "delta_url": "https://updates.ami.exchange/deltas/3.0.1-to-3.0.2.bsdiff",  // optional
+    "version": "3.1.0",
+    "download_url": "https://github.com/.../releases/download/v3.1.0/ami-browser-3.1.0-linux-x64.deb",
+    "delta_url": "https://api.ami.exchange/deltas/3.0.1-to-3.1.0.bsdiff",  // optional
     "delta_size": 12400000,
     "full_size": 148000000,
     "mandatory": false,
@@ -3879,4 +3964,4514 @@ chrome/browser/ui/views/web_panel/
 
 *This document is the complete build plan for AMI Browser V3. Every section requires touching the Chromium binary. Extension-level features (AI chat logic, integration configs, skills library) are handled by the Hub extension outside of this build.*
 
+---
+
+## 29. V3 AI Architecture — Server-Side Proxy (No BYO Keys)
+
+### Problem (V2)
+In V2, users must configure their own API keys for each AI provider (OpenAI, Anthropic, Mistral, Ollama, etc.). This creates:
+- Friction during onboarding (copy-paste keys, figure out plans)
+- Support burden (invalid keys, rate limits, billing confusion)
+- Inconsistent experience (free models vary by provider)
+
+### V3 Architecture: All AI Through `ami.exchange`
+V3 users **never see or configure AI provider keys**. All chat/completion requests go through the AMI backend at `https://api.ami.exchange/api/ami/chat`.
+
+#### Backend Fallback Chain
+```
+User → AMI Browser → https://api.ami.exchange/api/ami/chat
+                          ↓
+                    1. Ollama Cloud (free)
+                          ↓ (if fails/rate-limited)
+                    2. Mistral (paid key)
+                          ↓ (if fails)
+                    3. Mistral (free key)
+```
+
+#### Endpoints (already deployed)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/ami/health` | None | Service status |
+| POST | `/api/ami/chat` | Premium | Chat completion (streaming + non-streaming) |
+| GET | `/api/ami/models` | Premium | List available models from all providers |
+| GET | `/api/ami/providers` | Premium | Provider status & default models |
+
+#### Subscription Gate
+- **Free tier**: No AI access (can use the browser, extensions, etc.)
+- **Premium (20€/month)**: Unlimited AI through the proxy
+- **Discount code `amidev`**: 1 year free premium (early access / developer testing)
+
+#### Extension Changes for V3
+1. **Remove** the provider configuration UI (connections panel key inputs)
+2. **Remove** client-side API key storage
+3. **Replace** direct provider calls in `gateway.js` with a single `fetch("https://api.ami.exchange/api/ami/chat", { ... })` call
+4. **Auth**: Extension authenticates via Clerk JWT token in Authorization header
+5. **Model selector**: Fetches available models from `/api/ami/models` instead of per-provider model lists
+
+#### Hub Extension Gateway Rewrite (V3)
+```javascript
+// V3 gateway — single backend call, no client-side keys
+async function amiChat(messages, opts = {}) {
+  const token = await getAuthToken(); // Clerk JWT
+  const res = await fetch("https://api.ami.exchange/api/ami/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      messages,
+      model: opts.model,
+      stream: opts.stream || false,
+      temperature: opts.temperature,
+      max_tokens: opts.max_tokens,
+    }),
+  });
+  if (!res.ok) throw new Error(`AMI API error: ${res.status}`);
+  return opts.stream ? res.body : res.json();
+}
+```
+
+### Benefits
+- Zero-config AI for end users
+- Backend controls cost, rate limiting, model rotation
+- Can add new providers without browser updates
+- Subscription revenue covers API costs
+- Clean separation: browser = UX, server = AI brains
+
+### Migration Path (V2 → V3)
+- V2 continues to work with BYO keys (extension-level, no binary change)
+- V3 binary ships with the new Hub extension that uses the proxy
+- Users with existing keys can still configure them as "override" (optional)
+
 *Last updated by: AMI Exchange Engineering Team*
+
+---
+
+## 30. Replace Native Chromium "Ask AI" / Side Panel Button with AMI Chat
+
+### Problem
+The native Chromium toolbar includes an "Ask" button (and related side panel) that opens the built-in Chromium AI panel. In AMI Browser this button:
+- Fails to open or shows an error (incompatible with our patched binary)
+- Conflicts with the AMI Chat experience
+- Exposes Chromium branding to users
+
+### Goal
+Remove the native "Ask AI" toolbar button and suppress the Lens/Gemini side panel. Replace with an AMI Chat trigger that opens the AMI FAB chat overlay or focuses the Hub chat panel.
+
+### Implementation Plan
+
+#### Binary-level (V3 C++ changes)
+- **Remove the Ask button entry** from `browser_actions_container.cc` / `chrome/browser/ui/views/toolbar/toolbar_view.cc`
+- **Suppress the side panel** for Lens / AI features: patch `SidePanelRegistry` to skip registering `kLens`, `kReadingList`, `kSideSearch`, `kAssistant` panel entries
+- **Hide the Side Panel toolbar button** — AMI V3 will use its own sidebar (see Section 6)
+
+#### Extension-level (Hub extension — can ship in V2)
+Extend the existing branding hider in `content-inject.js` to also suppress:
+```js
+const EXTRA_CHROME_HIDE = [
+  'cr-button[data-value="side-panel"]',
+  'button[aria-label*="Ask"]',
+  'button[title*="Ask"]',
+  'button[aria-label*="Gemini"]',
+  'side-panel-app',
+  'lens-side-panel-app',
+];
+```
+If the Ask button click survives, intercept it in a content script and redirect:
+1. Fire `window.postMessage({ type: 'AMI_OPEN_CHAT' }, '*')` to open the FAB panel
+2. Or navigate to `chrome-extension://[ext-id]/hub.html#chat`
+
+#### UX Replacement
+- The AMI FAB (`Ctrl+Shift+A`) already provides Ask AI on every page
+- The Hub new-tab chat (centre column) covers in-depth agent interactions
+- **V3 toolbar idea**: add a small AMI brain/chat icon where the native Ask button was, wired to open the FAB panel
+
+### Notes
+- V2 partial coverage: the NTP footer hider IIFE in `hub.js` already hides `button[title*="Chrome"]` and similar elements
+- Full removal requires patching `toolbar_view.cc` — a V3 binary task
+- Do NOT surface Gemini / Google AI branding in AMI Browser
+
+---
+
+## 31. Opera-Style Chromium WebUI Takeover — Full Internal Page Redesign
+
+> **Inspired by:** Opera Browser — 100% Chromium-based yet users never feel like they're in Chrome. Opera achieves this by not just reskinning colors but by **relocating, restructuring, and redesigning** every embedded Chromium internal page. UI elements are moved to new positions, whole sections are reordered, and the layout language is entirely their own.
+>
+> **AMI's goal:** Every `chrome://` page should feel like it was built from scratch by the AMI team. No Chromium-trained muscle memory should work. Users should feel they are in a completely different, purpose-built product.
+
+---
+
+### Why This Is Different From §22 (Visual Identity)
+
+Section 22 applies AMI's color palette and fonts to Chromium's internal pages — like a coat of paint. **Section 31 goes further:** it changes the *structure and layout* of those pages. Elements are moved to different positions, sections are reordered to prioritize AMI-relevant content, and entire layout patterns are replaced (e.g., Chrome's flat list settings become AMI's card-based grouped settings).
+
+The key insight from Opera: **visual restyling alone isn't enough**. If a user opens `chrome://extensions` and the "Developer mode" toggle is in the exact same top-right corner it always was in Chrome, they know they're in a Chromium browser. Move that toggle to the sidebar, reorder the extension cards, change the grid layout — now it feels foreign. Now it feels like AMI.
+
+---
+
+### 31.1 The Opera Principle — Element Displacement
+
+**Rule:** Every internal page must have at least **3 structural differences** from its Chrome equivalent:
+1. One major element moved to a different location
+2. One section reordered or regrouped
+3. One new AMI-specific element added (or one Chrome-specific element removed)
+
+This is not arbitrary — it creates a consistent sense that the user is NOT in Chrome, reinforced across every page they visit.
+
+---
+
+### 31.2 Implementation Strategy — Two Layers
+
+#### Layer 1: CSS Layout Override (Fast — No HTML Changes Needed)
+For layout changes achievable with CSS alone (flexbox reordering, grid repositioning, show/hide, padding, border-radius, typography):
+
+```css
+/* ami-webui-layout.css — injected into ALL chrome:// pages */
+/* Example: move developer mode to top of extensions page */
+extensions-manager {
+  --developer-mode-position: flex-start; /* was: flex-end */
+}
+cr-toolbar-search-field {
+  order: -1; /* move search before title */
+}
+```
+
+This CSS is injected via the shared `ami_chrome_pages.css` mechanism from §22.19, but with layout rules in addition to color rules.
+
+#### Layer 2: HTML Template Patching (For Deeper Restructuring)
+For changes that require moving elements across DOM boundaries or changing component hierarchy — requires editing the TypeScript/HTML WebUI source files directly:
+
+- `chrome/browser/resources/extensions/` — Extension Manager
+- `chrome/browser/resources/settings/` — Settings
+- `chrome/browser/resources/history/` — History
+- `chrome/browser/resources/downloads/` — Downloads
+- `chrome/browser/resources/bookmarks/` — Bookmarks
+- `chrome/browser/resources/flags/` — Flags
+- `chrome/browser/resources/new_tab_page/` — New Tab Page (also §5)
+
+For each page: edit the Lit/Polymer components directly in the Chromium source tree, then rebuild. These are `.ts` / `.html` files compiled into the binary — changing them requires a full binary rebuild.
+
+---
+
+### 31.3 Page-by-Page Redesign Specifications
+
+#### `chrome://extensions` — Extension Manager
+
+**Chrome's layout:**
+```
+┌──────────────────────────────────────────────────────┐
+│  Extensions                          [Developer mode ○]│ ← toggle top-right
+│  Search extensions...                                  │
+│                                                        │
+│  ╔══════════╗  ╔══════════╗  ╔══════════╗             │
+│  ║ Ext Name ║  ║ Ext Name ║  ║ Ext Name ║             │
+│  ║ [icon]   ║  ║ [icon]   ║  ║ [icon]   ║             │
+│  ║ enabled○ ║  ║ enabled○ ║  ║ enabled○ ║             │
+│  ╚══════════╝  ╚══════════╝  ╚══════════╝             │
+│                                                        │
+│  [ Chrome Web Store ]                                  │
+└──────────────────────────────────────────────────────┘
+```
+
+**AMI's layout:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ┌─────────────────┐  ┌──────────────────────────────────────┐│
+│ │ AMI Extensions  │  │  Search extensions...           🔍   ││
+│ │ ─────────────── │  │                                      ││
+│ │ All Extensions  │  │  ╭──────────╮  ╭──────────╮          ││
+│ │ Enabled   (12)  │  │  │ Ext Name │  │ Ext Name │          ││
+│ │ Disabled   (3)  │  │  │ [icon]   │  │ [icon]   │          ││
+│ │ ─────────────── │  │  │ ○ On     │  │ ○ On     │          ││
+│ │ 🛠 Dev Tools    │  │  ╰──────────╯  ╰──────────╯          ││
+│ │   Dev Mode  ○   │  │                                      ││
+│ │   Load unpacked │  │  ╭──────────╮  ╭──────────╮          ││
+│ │   Pack ext...   │  │  │ Ext Name │  │ Ext Name │          ││
+│ │ ─────────────── │  │  │ [icon]   │  │ [icon]   │          ││
+│ │ 🏪 AMI WebStore │  │  │ ● Off    │  │ ○ On     │          ││
+│ └─────────────────┘  ╰──────────╯  ╰──────────╯          ││
+│                       └──────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **Developer mode** moved from a toggle in the top-right header → into a dedicated **"Dev Tools" sidebar section** with individual action buttons (Load unpacked, Pack extension). No longer a single toggle buried in the corner — it's a feature group
+2. **Left sidebar** added with extension filter categories (All / Enabled / Disabled) and Dev Tools section
+3. **Chrome Web Store link** removed; replaced with **AMI WebStore** link in sidebar
+4. **Extension cards** redesigned: icon larger, toggle more prominent, version/ID shown only on hover
+5. **Search bar** moved to top of the content area (not above the heading)
+
+**Files:**
+- `chrome/browser/resources/extensions/extensions.html` — add sidebar wrapper
+- `chrome/browser/resources/extensions/toolbar.html` / `toolbar.ts` — move dev mode toggle
+- `chrome/browser/resources/extensions/extensions_item.html` — redesign card layout
+- New CSS: `chrome/browser/resources/extensions/ami_extensions_layout.css`
+
+---
+
+#### `chrome://settings` — Settings
+
+**Chrome's layout:** Long flat sidebar list → single content area. Settings categories are listed vertically in a left nav.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│  ⚙ AMI Settings                      🔍 Search settings...    │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 🤖 AMI & AI                              [most used]     │  │
+│  │  AI Providers · Skills · Automations · Mission Control   │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                │
+│  ┌─────────────────────┐  ┌─────────────────────────────────┐  │
+│  │ 🔒 Privacy          │  │ 🎨 Appearance                   │  │
+│  │  Shield · Tracking  │  │  Theme · Fonts · Layout         │  │
+│  │  Cookies · Certs    │  │  Sidebar · Compact mode         │  │
+│  └─────────────────────┘  └─────────────────────────────────┘  │
+│                                                                │
+│  ┌─────────────────────┐  ┌─────────────────────────────────┐  │
+│  │ 🏦 Rewards & Wallet │  │ 🔌 Connected Apps               │  │
+│  │  Balance · History  │  │  Gmail · Slack · Notion · +more │  │
+│  │  Auto-approve rules │  │  OAuth tokens · Permissions     │  │
+│  └─────────────────────┘  └─────────────────────────────────┘  │
+│                                                                │
+│  ┌─────────────────────┐  ┌─────────────────────────────────┐  │
+│  │ 🌐 Browser          │  │ ⚡ Advanced                     │  │
+│  │  Tabs · Downloads   │  │  Languages · Reset · Developer  │  │
+│  │  Startup · Search   │  │  Flags · Internals              │  │
+│  └─────────────────────┘  └─────────────────────────────────┘  │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **AMI & AI section added at the TOP** — first thing users see is AMI-specific settings, not "You and Google" (which is removed/renamed)
+2. **Card-based grid layout** replaces Chrome's long sidebar list — 2-column grid of category cards (like iOS Settings)
+3. **"You and Google" section** removed entirely (or renamed "Account & Sync" with Google references stripped)
+4. **Rewards & Wallet and Connected Apps** cards added (AMI-specific, not in Chrome)
+5. **Search bar** moved to the page header (same position, but AMI-styled and searches AMI settings too)
+6. **"Advanced" section collapsed** — Chrome's advanced settings are less prominent; AMI's are card-accessible
+
+**Files:**
+- `chrome/browser/resources/settings/settings_main.html` / `.ts` — rewrite main layout
+- `chrome/browser/resources/settings/settings_menu.html` / `.ts` — remove "You and Google" category, add AMI category
+- New: `chrome/browser/resources/settings/ami_settings_landing.html` — card grid landing page
+- `chrome/browser/ui/webui/settings/settings_ui.cc` — register AMI settings handlers
+
+---
+
+#### `chrome://history` — History
+
+**Chrome's layout:** Simple list with a search bar at the top. Grouped by day.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│  History                                                       │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ 🧠 Smart Search   Ask anything: "that ML article I     │   │
+│  │                   read on Tuesday"              [→]    │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│                                                                │
+│  [All]  [Today]  [This week]  [Images]  [Videos]  [Docs]      │  ← filter chips
+│                                                                │
+│  ── Today ──────────────────────────────────────────────────   │
+│  🕐 14:32  example.com  · Article: "Understanding LLMs"        │
+│  🕐 13:15  github.com   · "my-project" repository              │
+│                                                                │
+│  ── Yesterday ─────────────────────────────────────────────   │
+│  🕐 18:04  youtube.com  · "How neural networks work"           │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **Smart Search bar pinned at the top** (hooks into §7 Smart History) — replaces Chrome's basic keyword search
+2. **Filter chips row** added below search — "Today", "This week", content type filters (Images, Videos, Docs). Chrome has no quick filters
+3. **Visit metadata** shown inline — page description, content type icon, reading time estimate
+4. **"Remove from history" button** visible on hover (Chrome buries it in a `⋮` menu)
+5. **Grouped visits** to the same domain collapsible (e.g., "12 visits to github.com today → [show all]")
+
+**Files:**
+- `chrome/browser/resources/history/history_list.html` / `.ts` — add filter chips, inline metadata
+- `chrome/browser/resources/history/history_toolbar.html` / `.ts` — replace search with Smart Search
+- `chrome/browser/ui/webui/history/history_ui.cc` — Smart Search data handler (links to §7)
+
+---
+
+#### `chrome://downloads` — Downloads
+
+**Chrome's layout:** Full-width list, each entry has filename, URL, progress bar, and action buttons in a row.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│  Downloads                                                     │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  [All]  [In progress (2)]  [Complete]  [Documents]  [Images]  │
+│                                                                │
+│  ── In Progress ───────────────────────────────────────────   │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ 📄 report-q2.pdf                           [Pause] [✕] │   │
+│  │ From: docs.google.com                                  │   │
+│  │ ████████████░░░░░░  65%  · 4.2 MB / 6.5 MB · 12s left │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│                                                                │
+│  ── Complete ──────────────────────────────────────────────   │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ 📷 screenshot-2026.png          [Open] [Show] [🤖 Rename]│  │
+│  │ 2.1 MB · Downloaded at 13:04 from ami.exchange         │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **Filter chips at top** — "In Progress", "Complete", by file type (Documents, Images, Videos, etc.). Chrome has no filtering
+2. **Card layout** instead of flat list — each download is a rounded card (consistent with AMI's design language)
+3. **"🤖 Rename" button** on completed downloads — triggers Tidy Downloads AI rename suggestion (§9)
+4. **Progress bar redesign** — full-width within the card, purple gradient, shows percentage + speed + ETA
+5. **Status sections** — "In Progress" group shown first, then "Complete" (Chrome mixes them with no grouping)
+
+**Files:**
+- `chrome/browser/resources/downloads/downloads.html` / `.ts` — card layout, filter chips
+- `chrome/browser/resources/downloads/item.html` / `.ts` — card redesign, Rename button
+- `chrome/browser/ui/webui/downloads/downloads_ui.cc` — Tidy Rename integration
+
+---
+
+#### `chrome://bookmarks` — Bookmarks Manager
+
+**Chrome's layout:** Left sidebar tree + right panel list. Looks like a file manager from 2012.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│  Bookmarks                          🔍 Search    [+ New folder]│
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  [All]  [Work]  [Personal]  [Research]  [To Read]             │  ← folder chips
+│                                                                │
+│  ── Work ──────────────────────────────────────────────────   │
+│  ╭──────────────╮  ╭──────────────╮  ╭──────────────╮        │
+│  │ [favicon]    │  │ [favicon]    │  │ [favicon]    │        │
+│  │ GitHub Repo  │  │ Jira Board   │  │ Confluence   │        │
+│  │ github.com   │  │ jira.com     │  │ atlassian.com│        │
+│  ╰──────────────╯  ╰──────────────╯  ╰──────────────╯        │
+│                                                                │
+│  ── Personal ──────────────────────────────────────────────   │
+│  ╭──────────────╮  ╭──────────────╮                          │
+│  │ [favicon]    │  │ [favicon]    │                          │
+│  │ Recipe Blog  │  │ Travel Plans │                          │
+│  │ food.com     │  │ airbnb.com   │                          │
+│  ╰──────────────╯  ╰──────────────╯                          │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **Visual card grid** replaces the tree-list file manager look
+2. **Folder chips** at the top for one-click folder navigation
+3. **Favicons displayed prominently** in cards (Chrome shows them as tiny 16px icons in a list)
+4. **Sidebar removed** — navigation is via chips, consistent with AMI's chip-based navigation pattern
+5. **Right-click → rename/delete** preserved; also accessible via card hover menu
+
+**Files:**
+- `chrome/browser/resources/bookmarks/bookmarks_list.html` / `.ts` — card grid layout
+- `chrome/browser/resources/bookmarks/bookmarks_toolbar.html` — folder chip nav
+
+---
+
+#### `chrome://flags` — Experimental Features
+
+**Chrome's layout:** Long searchable list, each flag is a row with a dropdown.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│  ⚑ AMI Experimental Features                                  │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  ⚠️  Experimental features may cause instability.             │
+│                                                                │
+│  🔍 Search flags...                                           │
+│                                                                │
+│  ── AMI Features ─────────────────────────────────────────    │  ← AMI-specific group
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ AMI Mission Control Live Capture FPS         [Default▾]│   │
+│  │ Adjust real-time tab capture frame rate                │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│                                                                │
+│  ── Enabled ──────────────────────────────────────────────    │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ GPU Rasterization                              [Enabled]│   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│                                                                │
+│  ── Available ────────────────────────────────────────────    │
+│  ...                                                          │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **Title changed** from "Experiments" to "AMI Experimental Features"
+2. **AMI-specific flags section** pinned at the top (flags that control AMI V3 features: Mission Control FPS, Smart History, Vision AI mode, etc.)
+3. **"Enabled" group** shown before the full list — quickly see what you've changed
+4. **Chrome branding references** ("Google Chrome Experiments") replaced with AMI branding
+5. **Flag cards** use AMI's card style with rounded corners; dropdowns use AMI's custom dropdown style
+
+**Files:**
+- `chrome/browser/resources/flags/flags.html` / `.ts` — AMI section, reordering, branding
+- `chrome/browser/ui/webui/flags/flags_ui.cc` — inject AMI feature flags at top
+
+---
+
+#### `chrome://newtab` — New Tab Page
+
+Already covered in §5 (Chat-First NTP). The key layout changes (chat input centered, AMI branding, no Google Search bar) are specified there. Listed here for completeness as part of the full internal pages overhaul.
+
+---
+
+#### `chrome://version` — Version Info
+
+**Chrome's layout:** Plain text dump of version strings, command line, path info.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│  [AMI Logo]  AMI Browser  v3.0.2  (Stable)                    │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  🖥️  Build          3.0.2.1 (Official Build) linux/x64        │
+│  ⚙️  Chromium Base  146.0.7680.80                              │
+│  🔧  Node Version   20.20.2 (bundled)                          │
+│  🧩  Revision       [git hash]                                 │
+│                                                                │
+│  ── Paths ────────────────────────────────────────────────    │
+│  Profile:   /home/user/.config/ami-browser/Default            │
+│  Binary:    /usr/lib/ami-browser/ami-browser                  │
+│                                                                │
+│  ── Command Line (click to copy) ────────────────────────    │
+│  /usr/lib/ami-browser/ami-browser --flag1 --flag2...          │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **AMI logo and branding** at the top — not a plain text dump
+2. **Chromium base version** shown but labeled "Chromium Base" (not "Google Chrome")
+3. **Card layout** for key info, not a flat text dump
+4. **"Copy" button** for the command line (saves manual select-all)
+
+**Files:**
+- `chrome/browser/resources/version/version.html` / `.ts` — card layout, AMI logo, copy button
+- `chrome/browser/ui/webui/version/version_ui.cc` — AMI branding strings
+
+---
+
+#### `chrome://about` — About Page
+
+Remove entirely or redirect to `chrome://version`. Chrome's about page is a thin wrapper.
+
+**Implementation:** Return a `302` redirect from `chrome://about` to `chrome://version` in `chrome/browser/ui/webui/about_ui.cc`.
+
+---
+
+#### `chrome-devtools://devtools` — Developer Tools
+
+DevTools is complex — a full web app in itself. AMI makes targeted changes rather than a full rewrite:
+
+**Targeted changes:**
+1. **DevTools color theme** — ships with an AMI dark theme preset (navy background `#1a1a2e`, accent `#e94560`) available in DevTools Settings → Themes → "AMI Dark"
+2. **DevTools header** — subtle AMI logo watermark on the panel header (top-left, very faint)
+3. **"Powered by" attribution** — DevTools credits panel updated to reflect AMI Browser
+4. **Console welcome message** — change the DevTools console welcome message:
+   ```
+   // Chrome shows: "Welcome to Chrome DevTools"
+   // AMI shows:
+   console.log('%cAMI Browser DevTools', 'color: #e94560; font-size: 18px; font-weight: bold;');
+   console.log('%cTip: Try window.__ami to access AMI Browser APIs', 'color: #94a3b8;');
+   ```
+5. **No Google Analytics / error reporting** from DevTools (Chromium already strips these in non-Google builds)
+
+**Files:**
+- `third_party/devtools-frontend/src/front_end/core/sdk/` — console welcome message
+- `third_party/devtools-frontend/src/front_end/ui/legacy/themes/` — add AMI theme preset
+
+---
+
+#### `chrome://inspect` — Remote Debugging
+
+**Changes:**
+- Replace "Chrome" branding in the page title and headings with "AMI Browser"
+- Dark theme applied via the shared `ami-webui-layout.css`
+- No structural layout changes needed
+
+**Files:**
+- `chrome/browser/resources/inspect/inspect.html` — string replacements
+- CSS override via shared stylesheet
+
+---
+
+#### `chrome://net-internals` and `chrome://gpu`
+
+**Changes:** Dark theme only via shared stylesheet. No structural changes — these are power-user/diagnostic pages where Chrome-default layout is familiar to the target audience (developers).
+
+---
+
+### 31.4 Shared WebUI Injection System
+
+A single mechanism injects both the color CSS (§22.19) and the layout CSS (§31) into every `chrome://` page. This avoids per-page boilerplate.
+
+```cpp
+// In chrome/browser/ui/webui/chrome_web_ui_controller_factory.cc
+// During WebUI controller creation, inject shared AMI stylesheets
+
+void InjectAMIStylesheets(content::WebUIDataSource* source) {
+  // Layer 1: Colors + fonts (from §22)
+  source->AddResourcePath("ami_chrome_pages.css",
+      IDR_AMI_CHROME_PAGES_CSS);
+
+  // Layer 2: Layout overrides (from §31)
+  source->AddResourcePath("ami_webui_layout.css",
+      IDR_AMI_WEBUI_LAYOUT_CSS);
+
+  // Force-inject both into the page's HTML <head>
+  source->UseStringsJs();
+  source->AddString("amiStylesheets", R"(
+    <link rel='stylesheet' href='chrome://resources/ami_chrome_pages.css'>
+    <link rel='stylesheet' href='chrome://resources/ami_webui_layout.css'>
+  )");
+}
+```
+
+Each WebUI page's base HTML includes `$i18n{amiStylesheets}` in `<head>` — already a Chromium pattern used for localization strings.
+
+---
+
+### 31.5 Key CSS Layout Primitives
+
+These are the CSS rules that power most of the element displacement across pages without requiring HTML changes:
+
+```css
+/* ============================================================
+   ami-webui-layout.css
+   AMI Browser — WebUI Layout Override Layer (§31)
+   Applied to: all chrome:// and chrome-untrusted:// pages
+   ============================================================ */
+
+/* --- Global AMI Layout Resets --- */
+:root {
+  --ami-bg:         #1a1a2e;
+  --ami-surface:    #16213e;
+  --ami-card:       #0f3460;
+  --ami-accent:     #e94560;
+  --ami-accent-alt: #7c3aed;  /* purple variant */
+  --ami-text:       #e2e8f0;
+  --ami-muted:      #94a3b8;
+  --ami-border:     #2d2d4a;
+  --ami-radius:     12px;
+  --ami-card-radius: 10px;
+  --ami-transition: 150ms ease;
+}
+
+/* --- Card layout helper (used by extensions, downloads, bookmarks) --- */
+.ami-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  padding: 24px;
+}
+
+.ami-card {
+  background: var(--ami-surface);
+  border: 1px solid var(--ami-border);
+  border-radius: var(--ami-card-radius);
+  padding: 16px;
+  transition: border-color var(--ami-transition), box-shadow var(--ami-transition);
+}
+
+.ami-card:hover {
+  border-color: var(--ami-accent-alt);
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.15);
+}
+
+/* --- Filter chips (history, downloads, bookmarks) --- */
+.ami-chips {
+  display: flex;
+  gap: 8px;
+  padding: 0 24px 16px;
+  flex-wrap: wrap;
+}
+
+.ami-chip {
+  background: var(--ami-surface);
+  border: 1px solid var(--ami-border);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-size: 13px;
+  color: var(--ami-muted);
+  cursor: pointer;
+  transition: all var(--ami-transition);
+}
+
+.ami-chip.active,
+.ami-chip:hover {
+  background: var(--ami-accent-alt);
+  border-color: var(--ami-accent-alt);
+  color: white;
+}
+
+/* --- Page header pattern --- */
+.ami-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid var(--ami-border);
+}
+
+.ami-page-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ami-text);
+}
+
+/* --- Sidebar layout (extensions page) --- */
+.ami-sidebar-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+}
+
+.ami-sidebar {
+  background: var(--ami-surface);
+  border-right: 1px solid var(--ami-border);
+  padding: 16px 0;
+}
+
+.ami-sidebar-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ami-muted);
+  padding: 16px 16px 8px;
+}
+
+.ami-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  margin: 0 8px;
+  color: var(--ami-text);
+  cursor: pointer;
+  transition: background var(--ami-transition);
+}
+
+.ami-sidebar-item:hover,
+.ami-sidebar-item.active {
+  background: rgba(124, 58, 237, 0.15);
+  color: white;
+}
+```
+
+---
+
+---
+
+### 31.6 Additional User-Facing Internal Pages
+
+These pages are opened regularly by normal users (not just developers). They must all pass the "Not Chrome" test.
+
+---
+
+#### `chrome://password-manager` — Password Manager
+
+Chrome's password manager moved from settings into a dedicated page. It's heavily Google-branded.
+
+**Chrome's layout:** Left sidebar (Passwords / Checkup / Settings) + right panel with a search bar and a flat list of credentials. The page logo is a Google key icon.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│ 🔑 AMI Vault                                                   │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  ┌─────────────────┐  ┌──────────────────────────────────────┐│
+│  │ 🔑 Passwords    │  │ 🔍 Search passwords...               ││
+│  │    (42)         │  │                                      ││
+│  │ 🛡 Security     │  │  ── Recently used ──────────────    ││
+│  │    Check        │  │  ╭─────────────────────────────────╮ ││
+│  │ 💳 Passkeys     │  │  │ github.com                      │ ││
+│  │    (8)          │  │  │ myuser@email.com  [Copy] [👁] [✏]│ ││
+│  │ ⚙ Vault         │  │  ╰─────────────────────────────────╯ ││
+│  │   Settings      │  │                                      ││
+│  └─────────────────┘  │  ╭─────────────────────────────────╮ ││
+│                       │  │ notion.so                        │ ││
+│                       │  │ john@company.com [Copy] [👁] [✏] │ ││
+│                       │  ╰─────────────────────────────────╯ ││
+│                       └──────────────────────────────────────┘│
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **Title changed** from "Google Password Manager" / "Passwords" to **"AMI Vault"** — branding the password manager as AMI's own product
+2. **Google key logo** replaced with AMI lock/vault icon
+3. **"Passwords in your Google Account"** messaging removed — replaced with "Stored in your AMI Vault"
+4. **Passkeys** added as a separate sidebar section (Chrome shows them mixed in the list)
+5. **Credential cards** redesigned with AMI card style; action buttons visible on hover
+6. **"Import from Google"** button changed to "Import passwords" (generic, no Google reference)
+7. **Security Check section** — Chrome links to Google's security checkup page; AMI runs its own local breach check via HIBP API (Have I Been Pwned)
+
+**Files:**
+- `chrome/browser/resources/password_manager/password_manager_app.ts` — sidebar, branding
+- `chrome/browser/resources/password_manager/passwords_section.ts` — credential card redesign
+- `chrome/browser/ui/webui/password_manager/password_manager_ui.cc` — remove Google Account strings
+
+---
+
+#### `chrome://print` — Print Preview
+
+**Chrome's layout:** Left panel (print settings) + right panel (page preview). Heavy use of material design dropdowns and a prominent "Print" button at the top.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│  🖨 Print Preview                          [Cancel]  [Print →] │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  ┌──────────────────────┐  ┌─────────────────────────────────┐│
+│  │ Destination          │  │                                 ││
+│  │ [🖨 HP LaserJet  ▾]  │  │                                 ││
+│  │                      │  │   [  PAGE PREVIEW  ]            ││
+│  │ Pages  [All ▾]       │  │                                 ││
+│  │ Copies  [1    ]      │  │                                 ││
+│  │ Layout  [Portrait ▾] │  │                                 ││
+│  │ Color   [Color ▾]    │  │                                 ││
+│  │ ─────────────────    │  │                                 ││
+│  │ ▾ More settings      │  └─────────────────────────────────┘│
+│  │   Paper size         │                                     │
+│  │   Scale              │  ← 1 of 3  →                       │
+│  │   Margins            │                                     │
+│  └──────────────────────┘                                     │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **Action buttons** (Cancel / Print) moved to the top header bar — Chrome has them at the top of the left panel only
+2. **Settings panel** uses AMI card style with subtle dividers instead of material expansion panels
+3. **Page navigation** (1 of 3) shown below the preview, not inside it
+4. **"Send to Google Drive"** destination removed; only local printers and "Save as PDF"
+5. **Dark-themed preview background** — the page preview sits on AMI's dark background instead of Chrome's light gray
+
+**Files:**
+- `chrome/browser/resources/print_preview/print_preview.ts` — header buttons, layout
+- `chrome/browser/resources/print_preview/settings/` — AMI-styled settings panel
+- `chrome/browser/resources/print_preview/preview_area.ts` — dark background
+
+---
+
+#### `chrome://tab-search` — Tab Search
+
+Tab Search is the searchable tab list popup (Ctrl+Shift+A in Chrome, or the arrow on the tab strip).
+
+**Chrome's layout:** A floating popup with a search bar at top, list of open tabs below grouped as "Open tabs" and "Recently closed".
+
+**AMI's layout:**
+```
+╭──────────────────────────────────────────────────────╮
+│ 🔍 Search tabs, history, bookmarks...                │  ← expanded scope
+│                                                      │
+│  ── Open (12) ──────────────────────────────────    │
+│  ● GitHub · my-project / issues                      │
+│    [favicon] github.com/yassirboudda...               │
+│                                                      │
+│  ○ Notion · Q2 Planning                              │
+│    [favicon] notion.so/workspace/...                  │
+│                                                      │
+│  ── Automation tabs (3) ──────────────────────────  │  ← AMI-specific section
+│  🔄 Amazon — Buy batteries  43%                      │
+│  🔄 LinkedIn — Find MLEs    40%                      │
+│                                                      │
+│  ── Recently closed ──────────────────────────────  │
+│  ✕ Stack Overflow · Python list comp...  2 min ago   │
+│                                                      │
+│  [Open Mission Control]                              │  ← AMI-specific action
+╰──────────────────────────────────────────────────────╯
+```
+
+**Structural changes:**
+1. **Search scope expanded** — searches not just tabs but also history and bookmarks (like a mini command palette)
+2. **Automation tabs section** added between open tabs and recently closed — shows active automations with progress
+3. **"Open Mission Control" button** at the bottom — quick shortcut to §18 Mission Control
+4. **Tab previews on hover** — thumbnail preview on hover (Chrome only shows favicons)
+5. **AMI keyboard shortcut** changed: `Ctrl+Shift+T` opens tab search (Chrome's default Ctrl+Shift+A conflicts with AMI Chat)
+
+**Files:**
+- `chrome/browser/resources/tab_search/tab_search_app.ts` — expanded search, AMI sections
+- `chrome/browser/resources/tab_search/tab_search_item.ts` — tab hover previews
+- `chrome/browser/ui/webui/tab_search/tab_search_ui.cc` — automation tab data provider
+
+---
+
+#### `chrome://certificate-manager` — Certificate Manager
+
+**Chrome's layout:** Flat table of certificates organized by category (Personal, Trusted CAs, etc.) with Import/Export buttons.
+
+**AMI's changes:**
+- Dark theme via shared stylesheet
+- **Certificate cards** instead of flat table rows — each cert shows domain, issuer, expiry date in a readable card
+- **Expiry warnings** — certs expiring within 30 days shown with an amber indicator
+- **"Import" button** repositioned to a floating action button (bottom-right), not in the header
+- Remove any Google Trust Store / Google-branded CA references in the UI copy
+
+**Files:**
+- `chrome/browser/resources/certificate_manager/` — card layout
+- `chrome/browser/ui/webui/certificate_manager/` — remove Google branding strings
+
+---
+
+#### `chrome://safety-check` / `chrome://settings/safetyCheck` — Safety Check
+
+**Chrome's layout:** A page with a single "Check now" button and a list of check results (passwords, extensions, Chrome version, Safe Browsing status). All copy is Google-branded.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│  🛡 AMI Security Check                                         │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  Last checked: 2 hours ago                   [Run Check →]    │
+│                                                                │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ ✅ Passwords      42 saved · 0 compromised             │   │
+│  │                   Powered by HIBP (local check)        │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ ✅ Extensions     12 active · 0 flagged                │   │
+│  │                   No suspicious extensions found       │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ ✅ AMI Browser    v3.0.2 — Up to date                  │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ ✅ AMI Shield     Active — 1,247 blocked this session  │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **Title** changed to "AMI Security Check"
+2. **"Check now" button** moved to the top header (not buried below a description paragraph)
+3. **Result cards** with AMI card style — each category is a distinct card
+4. **"Safe Browsing"** item replaced with **"AMI Shield"** (our ad/tracker blocker status)
+5. **Password check** uses local HIBP instead of Google's password checkup service
+6. **"Update Google Chrome"** item replaced with "Update AMI Browser"
+7. **"Google account sync"** item removed entirely
+
+**Files:**
+- `chrome/browser/resources/settings/safety_check/` — card layout, AMI branding
+- `chrome/browser/ui/webui/settings/safety_check_handler.cc` — replace Google-specific check logic
+
+---
+
+#### `chrome://privacy-sandbox-internals` / Privacy Sandbox Settings
+
+Chrome has a Privacy Sandbox section in settings for ad topics/interests tracking. AMI's stance: **disabled and hidden**.
+
+**Changes:**
+- Hide the entire Privacy Sandbox settings section from `chrome://settings/privacySandbox`
+- If accessed directly, show: "AMI Browser does not participate in Privacy Sandbox or interest-based advertising. This feature is disabled."
+- Remove all Privacy Sandbox UI from settings menu
+- Disable the underlying APIs at compile time (`blink::features::kPrivacySandboxAdsAPIs = false`)
+
+**Files:**
+- `chrome/browser/resources/settings/privacy_page/privacy_sandbox/` — replace with disabled notice
+- `chrome/browser/ui/webui/settings/privacy_sandbox_handler.cc` — stub out
+
+---
+
+### 31.7 Settings Sub-Pages — Deep Redesign
+
+Chrome's settings sub-pages (loaded at routes like `chrome://settings/privacy`, `chrome://settings/security`, etc.) all inherit the same flat material design list style. AMI redesigns each to use card groups.
+
+#### `chrome://settings/privacy` — Privacy & Security
+
+**Chrome's layout:** Long vertical list of toggles and links. Privacy Sandbox section prominent.
+
+**AMI's layout:** Cards grouped by category:
+```
+╭────────────────────────────────────────────────────────────╮
+│  🔒 Tracking Protection        [Enhanced ●]                │
+│  Blocks third-party tracking. AMI Shield active.           │
+╰────────────────────────────────────────────────────────────╯
+╭────────────────────────────────────────────────────────────╮
+│  🍪 Cookies                    [Block 3rd party ●]         │
+│  Site cookies · Clear on close                             │
+╰────────────────────────────────────────────────────────────╯
+╭────────────────────────────────────────────────────────────╮
+│  🕵 Browsing Data              [Clear data →]              │
+│  History · Cookies · Cache                                 │
+╰────────────────────────────────────────────────────────────╯
+```
+
+**Key changes:** Privacy Sandbox section removed. "Google account" and sync-related privacy options removed. AMI Shield toggle added at top.
+
+---
+
+#### `chrome://settings/security` — Security
+
+**Chrome's layout:** Safe Browsing mode selector (Enhanced / Standard / No protection) is the dominant element.
+
+**AMI's layout:**
+- **"Safe Browsing"** relabeled to **"Threat Protection"** — AMI's own phrasing
+- Safe Browsing mode selector redesigned as a visual radio card selector (not radio buttons with walls of text)
+- **"Always use HTTPS"** toggle moved to the top (most actionable security setting)
+- **Certificate transparency** and advanced options moved to a collapsible "Advanced" card
+
+---
+
+#### `chrome://settings/passwords` — Passwords (Settings Route)
+
+Redirect to `chrome://password-manager` (the dedicated AMI Vault page, see §31.6). No split between settings and the dedicated page.
+
+---
+
+#### `chrome://settings/content` — Site Settings / Content Settings
+
+**Chrome's layout:** Flat list of content types (location, camera, microphone, notifications, JavaScript, etc.).
+
+**AMI's changes:**
+- Group content settings into two visual columns: "Allowed by default" and "Blocked by default"
+- Add **"AMI Agent Permissions"** section — which sites are allowed to be automated by AI agents (new permission type added in §17)
+- Move "Notifications" to the top of the blocked column (most abused permission)
+
+---
+
+#### `chrome://settings/accessibility` — Accessibility
+
+**Chrome's layout:** Simple list of toggles.
+
+**AMI's changes:**
+- Dark theme via shared stylesheet
+- Group toggles into "Vision", "Motion", "Input" card sections
+- **"High contrast"** toggle links to AMI's built-in high-contrast theme variant
+
+---
+
+### 31.8 Developer & Diagnostic Pages
+
+These pages are used by developers and power users. They don't need full visual redesigns, but they must not look like Chrome. Apply AMI dark theme + targeted branding changes.
+
+---
+
+#### `chrome://net-internals` — Network Internals
+
+Chromium's most powerful diagnostic tool. Used by developers to trace DNS lookups, HTTP connections, sockets, WebSockets, and more.
+
+**AMI's changes beyond dark theme:**
+- **Tab headers** (DNS / Sockets / HTTP/2 / QUIC / etc.) styled as AMI chip tabs instead of Chrome's gray tab bar
+- **"DNS" tab renamed** to "DNS Resolver" for clarity
+- **AMI Banner** added at the top: "AMI Network Internals — Powered by Chromium NetLog"
+- **Export button** (`chrome://net-export/`) linked prominently as an icon button in the header
+- **AMI Shield stats** shown in a new "Shield" tab: requests blocked, filter list version, last update
+
+**Files:**
+- `chrome/browser/resources/net_internals/` — tab styling, AMI banner, Shield tab
+
+---
+
+#### `chrome://gpu` — GPU Information
+
+**AMI's changes:**
+- Dark theme via shared stylesheet
+- **Status table** rows use alternating `--ami-surface` / `--ami-bg` backgrounds (not Chrome's white/gray)
+- **"Graphics Feature Status" section** moved to the top (most useful section) — Chrome shows "Version Information" first
+- **AMI renderer tag**: add "AMI Browser Renderer" label next to GPU device name
+- **Copy info button** — one-click copy of all GPU info for bug reports
+
+**Files:**
+- `chrome/browser/resources/gpu/` — section reordering, copy button, row styling
+
+---
+
+#### `chrome://webrtc-internals` — WebRTC Debugging
+
+Used by developers debugging video/audio calls.
+
+**AMI's changes:**
+- Dark theme
+- **Active connections** shown at the top with a count badge — Chrome shows them buried in a flat list
+- **"Create dump" button** styled as AMI button (not Chrome's default material button)
+- Connection state cards use AMI card style with color-coded status (green = connected, red = failed, gray = closed)
+
+---
+
+#### `chrome://media-internals` — Media Player Debugging
+
+Used by developers debugging HTML5 audio/video.
+
+**AMI's changes:**
+- Dark theme
+- Media player cards use AMI card style
+- **Active players** shown first (not mixed with past players)
+- Player state (playing/paused/buffering) shown with a colored indicator dot
+
+---
+
+#### `chrome://tracing` — Chrome Tracing Tool
+
+Chrome's built-in performance profiler that records trace events across all browser processes.
+
+**AMI's changes:**
+- Dark theme
+- **Record button** styled as a prominent AMI accent button (not Chrome's default gray)
+- **Trace category checkboxes** use AMI-styled checkboxes
+- **"Load" / "Save"** buttons use AMI's button style
+- **Page title** changed from "chrome://tracing" in the header to "AMI Performance Tracer"
+
+---
+
+#### `chrome://omnibox` — Omnibox Debugging
+
+Used by developers to debug omnibox autocomplete provider results.
+
+**AMI's changes:**
+- Dark theme
+- Input field uses AMI omnibox style (matching the actual omnibox — consistent)
+- Result rows use AMI card styling
+- AMI custom providers (`@ami`, `@history`, etc. from §23) show their results here with an "AMI" badge
+
+---
+
+#### `chrome://discards` — Tab Discard Status
+
+Shows which tabs are eligible for background discarding (memory savings).
+
+**AMI's changes:**
+- Dark theme
+- **Table rows** use AMI styling with status color codes (green = active, amber = eligible for discard, red = discarded)
+- **Automation tabs** (from §18) shown with a 🤖 badge and "Protected from discard" status — automation tabs must never be discarded
+- **"Discard" button** per row uses AMI's danger button style (red)
+
+---
+
+#### `chrome://process-internals` — Browser Process Info
+
+Shows the site isolation and process assignment model for open tabs.
+
+**AMI's changes:**
+- Dark theme
+- Process assignment tree uses AMI's card/tree style
+- Automation tabs highlighted with a distinct color
+
+---
+
+#### `chrome://serviceworker-internals` — Service Worker Debugging
+
+**AMI's changes:**
+- Dark theme
+- SW registration cards use AMI card style
+- Status badges (activated/installing/waiting) use AMI color tokens (green/amber/gray)
+
+---
+
+#### `chrome://indexeddb-internals` — IndexedDB Debugging
+
+**AMI's changes:**
+- Dark theme
+- Origin/database tree uses collapsible AMI card panels
+
+---
+
+#### `chrome://quota-internals` — Storage Quota
+
+**AMI's changes:**
+- Dark theme
+- Usage bars use AMI purple gradient (not Chrome's blue)
+- Storage breakdown uses AMI card per origin
+
+---
+
+#### `chrome://webrtc-logs` — WebRTC Logs
+
+**AMI's changes:**
+- Dark theme
+- Log entries use AMI monospace font (`JetBrains Mono` or `Fira Code` if bundled, otherwise `monospace`)
+
+---
+
+#### `chrome://sync-internals` — Sync Service Debugging
+
+**AMI's changes:**
+- Dark theme + AMI branding in header
+- **"Sync is disabled in AMI Browser"** banner shown at the top if sync to Google Account is disabled (which it is by default in AMI — users sync via AMI Sync instead)
+- Sync type status table uses AMI card rows
+
+---
+
+#### `chrome://signin-internals` — Sign-in State Debugging
+
+**AMI's changes:**
+- Dark theme
+- **"Google Account sign-in"** replaced with "AMI Account" in all headings
+- If user isn't signed into a Google account (common in AMI), shows a clean "No Google account connected — AMI account active" state instead of Chrome's empty/error state
+
+---
+
+#### `chrome://identity-internals` — Token Cache
+
+**AMI's changes:**
+- Dark theme
+- Token entries use AMI card rows
+- **AMI OAuth tokens** (from Connected Apps §16) listed here in addition to Google tokens
+
+---
+
+#### `chrome://safe-browsing` — Safe Browsing Status Debugging
+
+**AMI's changes:**
+- Dark theme
+- **Page title** changed to "AMI Threat Protection Status"
+- Google Safe Browsing references in the copy changed to "AMI Threat Protection"
+
+---
+
+#### `chrome://access-code-cast` / `chrome://cast`
+
+Cast/media streaming pages.
+
+**AMI's changes:**
+- Dark theme via shared stylesheet
+- Remove Google Cast branding from the UI header; replace with "AMI Media Cast"
+
+---
+
+### 31.9 Informational & System Pages
+
+---
+
+#### `chrome://policy` — Enterprise Policies
+
+Shows active enterprise policies applied to the browser.
+
+**AMI's changes:**
+- Dark theme
+- **Page title** changed to "AMI Browser Policies"
+- Policy table uses AMI card rows, not a flat HTML table
+- **AMI-specific policies** (automation limits, Shield enforcement, AI provider restrictions) added as a separate "AMI Policies" section at the top
+- "Learn more" links point to AMI documentation instead of Google's enterprise documentation
+
+---
+
+#### `chrome://management` — Managed Browser Notice
+
+Chrome shows a "Your browser is managed by your organization" page. AMI has no enterprise management by default.
+
+**AMI's changes:**
+- If unmanaged: show "AMI Browser is fully under your control. No organization has administrative access." in AMI styling
+- If managed (enterprise deployment): show AMI-branded management notice instead of "This browser is managed by [company]" with a generic Google icon
+
+---
+
+#### `chrome://credits` — Open Source Credits
+
+Chrome's credits page is a very long list of open-source projects. It's one of the only places that explicitly says "Google Chrome" in an internal page.
+
+**AMI's changes:**
+- **Header** changed to "AMI Browser — Open Source Credits"
+- Add AMI's own open-source credits at the top (Chromium base, AMI-specific dependencies like adblock-rust, Backpack wallet, Inter font, etc.)
+- Dark theme via shared stylesheet
+- The original Chromium/Google credits are preserved below, as required by their licenses
+
+**Files:**
+- `chrome/browser/ui/webui/about_ui.cc` — header string, AMI credits section
+
+---
+
+#### `chrome://crashes` — Crash Reports
+
+**AMI's changes:**
+- Dark theme
+- **"Send crash reports to Google"** copy changed to "AMI does not send crash reports unless you opt in"
+- Crash list uses AMI card rows with timestamp, process type, and "View details" link
+- **"Upload all crash reports" button** hidden by default (AMI default: no telemetry)
+
+---
+
+#### `chrome://system` — System Information
+
+Shows a dump of OS, hardware, and browser information.
+
+**AMI's changes:**
+- Dark theme
+- **Page title** changed to "AMI System Information"
+- Each info section wrapped in a collapsible AMI card
+- **"Copy all" button** added for easy bug reporting
+- Google-specific entries (Google Account, Google services) hidden or labeled N/A
+
+---
+
+#### `chrome://histograms` — UMA Histograms
+
+Internal metrics. Developer-only.
+
+**AMI's changes:**
+- Dark theme
+- **Page header** shows "AMI Internal Metrics — Note: No data is sent to Google unless you have opted into crash reporting"
+- Histogram bars use AMI purple color
+
+---
+
+#### `chrome://media-engagement` — Media Engagement Scores
+
+Scores that influence Chrome's autoplay decisions.
+
+**AMI's changes:**
+- Dark theme
+- Table uses AMI card rows
+- **"Reset all scores" button** styled as AMI button
+
+---
+
+#### `chrome://site-engagement` — Site Engagement Scores
+
+Chrome's internal scoring of how much users interact with each site (affects permissions, etc.).
+
+**AMI's changes:**
+- Dark theme
+- Table uses AMI card rows with score bars (AMI purple gradient)
+- Sorted by score descending by default (not alphabetical like Chrome)
+
+---
+
+#### `chrome://ntp-tiles-internals` — NTP Tiles Debugging
+
+Debug page for the "Most Visited" tiles on the New Tab Page.
+
+**AMI's changes:**
+- Dark theme
+- Tiles previewed with AMI card style
+- Page title: "AMI New Tab Page — Tile Inspector"
+
+---
+
+#### `chrome://ukm` — URL-Keyed Metrics
+
+UKM records page-level metrics tied to URLs.
+
+**AMI's changes:**
+- Dark theme
+- **Banner**: "AMI does not send UKM data to Google. These metrics are stored locally only."
+- UKM entry table uses AMI card rows
+
+---
+
+#### `chrome://suggestions` — Suggestion Service
+
+Shows the content suggestions fetched from Google's servers for the NTP.
+
+**AMI's changes:**
+- Dark theme
+- **Banner**: "AMI does not use Google's suggestion service. This page shows local browsing-based suggestions only."
+- Suggestion cards use AMI card style
+
+---
+
+#### `chrome://translate-internals` — Translate Debugging
+
+Debugging page for Google Translate integration.
+
+**AMI's changes:**
+- Dark theme
+- **Banner**: "Translation in AMI Browser uses your configured AI provider, not Google Translate."
+- Event log uses AMI monospace font
+
+---
+
+#### `chrome://user-actions` — User Action Recording
+
+Records named user actions for debugging.
+
+**AMI's changes:**
+- Dark theme
+- Action log uses AMI-styled monospace log view (same as DevTools console style)
+
+---
+
+#### `chrome://bluetooth-internals` — Bluetooth Debugging
+
+**AMI's changes:**
+- Dark theme
+- Device cards use AMI card style
+- Status badges (connected/disconnected/scanning) use AMI color tokens
+
+---
+
+#### `chrome://usb-internals` — USB Debugging
+
+**AMI's changes:**
+- Dark theme
+- Device table uses AMI card rows
+
+---
+
+#### `chrome://device-log` — Device Log
+
+**AMI's changes:**
+- Dark theme
+- Log entries use AMI monospace style with color-coded severity (info = muted, warning = amber, error = red accent)
+
+---
+
+#### `chrome://network-errors` — Network Error Pages Catalog
+
+A developer page showing all Chromium network error codes and their error page rendering.
+
+**AMI's changes:**
+- Dark theme
+- Each error page preview shows AMI's custom error page design (from §22.18) — this page doubles as a preview tool for our custom error pages
+
+---
+
+#### `chrome://chrome-urls` — List of All Internal Pages
+
+Chrome's index of all `chrome://` pages.
+
+**AMI's changes:**
+- Dark theme
+- **Page title** changed to "AMI Browser — Internal Pages"
+- Pages are organized into categories (User Facing / Developer Tools / Diagnostic / Hidden) instead of a flat alphabetical list
+- AMI-specific pages (`chrome-untrusted://mission-control/`, `chrome-untrusted://ami-chat/`, etc.) included in the list
+
+---
+
+#### `chrome://whats-new` — What's New Page
+
+Chrome shows a "What's new in Chrome" page after updates.
+
+**AMI's layout:**
+- **Title**: "What's new in AMI Browser v3.x"
+- AMI's own changelog content (not Chrome's update notes)
+- Features highlighted with AMI card style and feature icons
+- **"See all changes"** links to AMI's GitHub releases page
+- No Chrome/Google branding
+
+**Files:**
+- `chrome/browser/resources/whats_new/` — full content + style replacement
+- `chrome/browser/ui/webui/whats_new/whats_new_ui.cc` — AMI changelog data source
+
+---
+
+### 31.10 Side Panel Pages Redesign
+
+Chromium has a side panel system (§4 adds AMI Chat as a panel). The built-in side panels also need AMI redesigns.
+
+---
+
+#### Reading List Side Panel
+
+**Chrome's layout:** Simple list of saved URLs with a title and date added.
+
+**AMI's layout:**
+```
+┌─────────────────────────────────┐
+│ 📚 Reading List          [+ Add]│
+│─────────────────────────────────│
+│ 🔍 Search saved...              │
+│                                 │
+│ ── Unread (4) ─────────────     │
+│ ╭───────────────────────────╮   │
+│ │ [favicon] Article title   │   │
+│ │ site.com · Added today    │   │
+│ │ [🤖 Summarize] [✓ Read]  │   │
+│ ╰───────────────────────────╯   │
+│                                 │
+│ ── Read (12) ──────────────     │
+│ ...                             │
+└─────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **"Unread" and "Read" sections** — Chrome has no separation
+2. **"🤖 Summarize" button** on each item — AI summarizes the article without navigating to it
+3. **Search** within the reading list
+4. AMI card style for each item
+
+---
+
+#### Bookmarks Side Panel
+
+**Chrome's layout:** Flat tree with folder structure. Same layout as `chrome://bookmarks` but in a narrow panel.
+
+**AMI's layout:**
+- Folder chips at the top for navigation
+- Bookmark cards with favicon, title, domain
+- **"Add bookmark" FAB** (floating action button) at the bottom
+- Matches the `chrome://bookmarks` redesign (§31.3) but adapted for the narrow panel width
+
+---
+
+#### History Side Panel
+
+**Chrome's layout:** Recent history list with a "Show full history" link.
+
+**AMI's layout:**
+- Smart Search bar at the top (§7)
+- Recent visits in AMI card style
+- "Open full history" link → goes to AMI's redesigned `chrome://history`
+
+---
+
+### 31.11 AMI DevTools MCP — Native Integration
+
+> **Reference:** [github.com/ChromeDevTools/chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp) — the official Chrome DevTools MCP server (36k stars) that exposes Chrome DevTools to AI agents via the Model Context Protocol.
+
+The chrome-devtools-mcp project is exactly the right interface for AMI's AI automation layer. Instead of maintaining a separate CDP bridge in the OpenClaw gateway, AMI should **ship a built-in, pre-configured DevTools MCP server** that is always running when AMI Browser is open — no setup required.
+
+**What chrome-devtools-mcp provides:**
+- Input automation: `click`, `drag`, `fill`, `fill_form`, `handle_dialog`, `hover`, `press_key`, `type_text`, `upload_file`
+- Navigation: `close_page`, `list_pages`, `navigate_page`, `new_page`, `select_page`, `wait_for`
+- Emulation: `emulate`, `resize_page`
+- Performance: `performance_analyze_insight`, `performance_start_trace`, `performance_stop_trace`
+- Network: `get_network_request`, `list_network_requests`
+- Debugging: `evaluate_script`, `get_console_message`, `lighthouse_audit`, `list_console_messages`, `take_screenshot`, `take_snapshot`
+- Extensions: `install_extension`, `list_extensions`, `reload_extension`, `trigger_extension_action`, `uninstall_extension`
+- Memory: `take_memory_snapshot`
+
+**AMI's Integration Plan:**
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                        AMI Browser                            │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │              OpenClaw Gateway (port 18789)                │ │
+│  │                                                           │ │
+│  │  Traditional automation:                                  │ │
+│  │  LLM → Vision AI → CDP actions → Browser tab             │ │
+│  │                                                           │ │
+│  │  NEW — DevTools MCP bridge:                               │ │
+│  │  LLM → MCP tool call → DevTools MCP server               │ │
+│  │                      → Puppeteer/CDP → Browser tab        │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │         Built-in DevTools MCP Server (port 18793)         │ │
+│  │         (chrome-devtools-mcp — shipped with AMI)          │ │
+│  │                                                           │ │
+│  │  • Runs as a native browser service (not a separate npm)  │ │
+│  │  • Connects to AMI Browser's debug endpoint automatically │ │
+│  │  • All 33 MCP tools available to OpenClaw agent           │ │
+│  │  • Also exposed externally for VS Code Copilot,           │ │
+│  │    Claude Desktop, Cursor, etc. to connect to             │ │
+│  └──────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────┘
+```
+
+#### Implementation
+
+**Option A: Bundle as a Node.js sidecar (fast to implement)**
+- Ship `chrome-devtools-mcp` as a bundled Node.js package alongside the AMI Browser binary
+- On browser start, launch it automatically: `node /usr/lib/ami-browser/devtools-mcp/server.js --auto-connect --browser-url=http://127.0.0.1:18791`
+- The AMI Browser binary starts with `--remote-debugging-port=18791`
+- OpenClaw gateway connects to the MCP server's WebSocket on port `18793`
+
+**Option B: Native C++ integration (clean, no Node dependency)**
+- Port the MCP server logic into a native C++ component inside the browser process
+- Expose MCP via a local WebSocket at `ws://127.0.0.1:18793`
+- Eliminates the Node.js dependency and the separate process
+- Aligns with AMI's goal of everything being binary-native
+
+**Recommendation: Option A for V3 launch, Option B as a V4 optimization.**
+
+#### AMI DevTools MCP — `chrome://settings/ami/devtools-mcp`
+
+A settings sub-page to manage the built-in DevTools MCP server:
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  🔌 AMI DevTools MCP                                          │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ Built-in DevTools MCP Server      ● Running on :18793  │   │
+│  │                                           [Stop]        │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│                                                                │
+│  Connect external clients                                      │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ MCP Endpoint:  ws://127.0.0.1:18793                    │   │
+│  │ Config JSON:   [Copy for VS Code Copilot]               │   │
+│  │               [Copy for Claude Desktop]                 │   │
+│  │               [Copy for Cursor]                         │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│                                                                │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ Security                                               │   │
+│  │ ○ Localhost only (default — safe)                      │   │
+│  │ ○ LAN access (for remote AI agents)                    │   │
+│  │ Token:  [                    ] [Generate]              │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│                                                                │
+│  Tools enabled:                                                │
+│  ✓ Input automation    ✓ Navigation    ✓ Screenshots          │
+│  ✓ Network inspection  ✓ Performance   ✓ Console access       │
+│  ✓ Extensions          ✓ Memory        ✗ File upload (off)    │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Why this is powerful:**
+- Users with VS Code Copilot, Claude Desktop, or Cursor can point those tools at AMI Browser's built-in MCP endpoint — zero configuration, just copy the JSON snippet
+- AMI's own OpenClaw gateway uses the same MCP interface for all automations — consistent, well-tested tooling
+- The DevTools MCP tool set (Puppeteer-backed, screenshot, console, network, performance) is far more capable than a custom CDP script
+
+#### DevTools MCP Integration with Mission Control (§18)
+
+When an automation is running via the DevTools MCP server, Mission Control (§18) receives the same progress events:
+- `take_screenshot` → frame forwarded to Mission Control live view
+- `navigate_page` → navigation event logged in activity feed
+- `evaluate_script` → console output shown in the automation card
+- `get_console_message` → errors surfaced in the Mission Control error handler (§18 §J)
+
+This makes the DevTools MCP the **unified automation interface** for everything: OpenClaw agent tasks, external AI tools (Copilot/Claude), and the Workflow Builder (§18.9).
+
+---
+
+### 31.12 Files Modified — Complete Summary
+
+| Page / Component | Key Files | Effort |
+|---|---|---|
+| `chrome://extensions` | `extensions.html`, `toolbar.ts`, `extensions_item.html` | 4–6 h |
+| `chrome://settings` (landing) | `settings_main.html`, `settings_menu.html` | 6–8 h |
+| `chrome://settings/privacy` | `privacy_page.ts`, safe_browsing sections | 2–3 h |
+| `chrome://settings/security` | `security_page.ts`, mode selector | 2–3 h |
+| `chrome://settings/safetyCheck` | `safety_check_page.ts` | 2–3 h |
+| `chrome://settings/content` | `site_settings_page.ts`, AMI permission type | 3–4 h |
+| `chrome://settings/accessibility` | `a11y_page.ts` | 1–2 h |
+| Privacy Sandbox (disabled) | `privacy_sandbox_handler.cc`, page TS | 1–2 h |
+| `chrome://history` | `history_list.html`, `history_toolbar.html` | 3–4 h |
+| `chrome://downloads` | `downloads.html`, `item.html` | 3–4 h |
+| `chrome://bookmarks` | `bookmarks_list.html`, `bookmarks_toolbar.html` | 3–4 h |
+| `chrome://password-manager` | `password_manager_app.ts`, `passwords_section.ts` | 4–5 h |
+| `chrome://print` | `print_preview.ts`, settings panel | 3–4 h |
+| `chrome://tab-search` | `tab_search_app.ts`, `tab_search_item.ts` | 2–3 h |
+| `chrome://certificate-manager` | cert manager resources | 2–3 h |
+| `chrome://flags` | `flags.html` | 2–3 h |
+| `chrome://version` | `version.html` | 1–2 h |
+| `chrome://about` | `about_ui.cc` redirect | 0.5 h |
+| `chrome://whats-new` | `whats_new_ui.cc`, page resources | 2–3 h |
+| `chrome://policy` | policy resources | 2–3 h |
+| `chrome://management` | management resources | 1 h |
+| `chrome://credits` | `about_ui.cc`, credits page | 1–2 h |
+| `chrome://crashes` | crashes resources | 1 h |
+| `chrome://system` | system resources | 1–2 h |
+| `chrome://net-internals` | net_internals resources | 2–3 h |
+| `chrome://gpu` | gpu resources | 1–2 h |
+| `chrome://webrtc-internals` | webrtc resources | 1–2 h |
+| `chrome://media-internals` | media_internals resources | 1–2 h |
+| `chrome://tracing` | tracing resources | 1–2 h |
+| `chrome://omnibox` | omnibox_ui resources | 1 h |
+| `chrome://discards` | discards resources | 1 h |
+| `chrome://process-internals` | process_internals resources | 1 h |
+| `chrome://serviceworker-internals` | sw_internals resources | 1 h |
+| `chrome://indexeddb-internals` | indexeddb resources | 1 h |
+| `chrome://quota-internals` | quota resources | 1 h |
+| `chrome://webrtc-logs` | webrtc_logs resources | 0.5 h |
+| `chrome://sync-internals` | sync_internals resources | 1 h |
+| `chrome://signin-internals` | signin_internals resources | 1 h |
+| `chrome://identity-internals` | identity_internals resources | 1 h |
+| `chrome://safe-browsing` | safe_browsing resources | 1 h |
+| `chrome://histograms` | histograms resources | 0.5 h |
+| `chrome://media-engagement` | media_engagement resources | 0.5 h |
+| `chrome://site-engagement` | site_engagement resources | 0.5 h |
+| `chrome://ntp-tiles-internals` | ntp_tiles resources | 0.5 h |
+| `chrome://ukm` | ukm resources | 0.5 h |
+| `chrome://suggestions` | suggestions resources | 0.5 h |
+| `chrome://translate-internals` | translate resources | 0.5 h |
+| `chrome://user-actions` | user_actions resources | 0.5 h |
+| `chrome://bluetooth-internals` | bluetooth resources | 0.5 h |
+| `chrome://usb-internals` | usb resources | 0.5 h |
+| `chrome://device-log` | device_log resources | 0.5 h |
+| `chrome://network-errors` | network_errors resources | 0.5 h |
+| `chrome://chrome-urls` | chrome_urls resources | 1 h |
+| Reading List side panel | side_panel/reading_list resources | 2–3 h |
+| Bookmarks side panel | side_panel/bookmarks resources | 1–2 h |
+| History side panel | side_panel/history resources | 1–2 h |
+| DevTools theme + console | `devtools-frontend/src/front_end/` | 3–4 h |
+| Shared injection system | `chrome_web_ui_controller_factory.cc`, `ami_webui_layout.css` | 2–3 h |
+| DevTools MCP sidecar | Node.js bundle + launch service | 4–6 h |
+| DevTools MCP settings page | `settings/ami/devtools_mcp_handler.cc` | 3–4 h |
+| **Total** | | **~90–120 h** |
+
+---
+
+### 31.13 The "Not Chrome" Test — Full Page Coverage
+
+> **Show each page to someone who uses Chrome daily. Ask: "What browser is this?"**
+> Pass = they say "AMI" or "I don't know". Fail = they say "Chrome" or recognize Chrome's layout.
+
+| Page | Fail condition | Pass condition |
+|------|---------------|---------------|
+| Extensions | Dev mode toggle top-right, Chrome Web Store link | Dev sidebar, AMI WebStore |
+| Settings landing | "You and Google" first section | "AMI & AI" first, card grid layout |
+| Settings/Privacy | Privacy Sandbox section present | Privacy Sandbox absent, AMI Shield toggle |
+| Settings/Security | "Safe Browsing" label, Google-branded modes | "Threat Protection" label |
+| Settings/Safety Check | "Check with Google" password check | Local HIBP check, AMI branding |
+| History | Basic text search only | Smart Search bar, filter chips |
+| Downloads | Flat list, no filter | Card layout, filter chips, AI Rename |
+| Bookmarks | Tree sidebar + list | Card grid, folder chips |
+| Password Manager | "Google Password Manager" header | "AMI Vault" header |
+| Print Preview | "Send to Google Drive" destination | Google Drive absent |
+| Tab Search | Only searches open tabs | Searches tabs + history + bookmarks |
+| Certificate Manager | Flat table, material buttons | Card rows, AMI buttons |
+| Safety Check | Google-linked password check | AMI Vault / HIBP check |
+| Flags | "Experiments" title, no AMI section | "AMI Experimental Features", AMI section |
+| Version | Plain text dump | Branded card layout, AMI logo |
+| What's New | Chrome changelog | AMI changelog |
+| Credits | "Google Chrome" header | "AMI Browser" header, AMI credits |
+| Net-internals | Plain gray tabs | AMI chip tabs, Shield stats tab |
+| GPU | Version info first, no copy button | Graphics status first, copy button |
+| Discards | No automation tab markers | Automation tabs protected, 🤖 badge |
+| Chrome URLs | Flat alphabetical list | Categorized, AMI pages included |
+| Reading List panel | No AI action | "Summarize" button per item |
+| DevTools | No themed console, no AMI theme | AMI console welcome, AMI dark theme |
+| DevTools MCP settings | Doesn't exist in Chrome | Full MCP management UI |
+
+---
+
+### 31.14 Remaining Internal Pages — Supplementary Coverage
+
+These pages are either rarely visited by normal users, used only in specific workflows, or only accessible by developers. They still need the AMI treatment — dark theme minimum, structural changes where meaningful.
+
+---
+
+#### `chrome://components` — Browser Components
+
+Shows updatable browser components (CRLSet certificate revocation list, Widevine CDM, etc.) with version numbers and "Check for update" buttons per component.
+
+**AMI's changes:**
+- Dark theme + AMI card rows per component
+- **Page title** changed to "AMI Browser Components"
+- Each component shown as a card: name, version, status badge (Up to date ✅ / Checking 🔄 / Update available ⬆)
+- **Google-branded components** (Google Update, Google Crash Handler) hidden or labeled as "System Component"
+- **CRLSet** component labeled "Security Certificate Revocation List" for clarity
+- "Check for update" button per card uses AMI button style
+
+**Files:**
+- `chrome/browser/resources/components/` — card layout, AMI branding
+- `chrome/browser/ui/webui/components/components_ui.cc` — filter Google-branded components
+
+---
+
+#### `chrome://apps` — Chrome Apps
+
+Chrome Apps (packaged apps) are mostly deprecated but the page still exists. Many users encounter it accidentally.
+
+**AMI's changes:**
+- Dark theme
+- **Page title** changed to "Apps" (remove "Chrome" prefix)
+- If no apps installed: show a friendly AMI-branded empty state: "No apps installed. Visit the AMI WebStore to discover tools." (links to AMI WebStore)
+- App tiles use AMI card style with rounded corners and favicon
+
+**Files:**
+- `chrome/browser/resources/apps/` — AMI empty state, card style
+
+---
+
+#### `chrome://on-device-internals` — On-Device AI Models
+
+Chrome's page for managing locally downloaded AI models (Gemini Nano, etc.).
+
+**AMI's changes:**
+- Dark theme
+- **Page title** changed to "AMI Local AI Models"
+- **"Gemini Nano"** references relabeled as "Local Language Model" generically — AMI is provider-agnostic
+- Model list uses AMI card rows: model name, size on disk, status (downloaded / downloading / available)
+- **"Download" button** per model uses AMI accent button style
+- Add **"Ollama Models"** section — shows models available in the user's local Ollama instance (pulled from `http://localhost:11434/api/tags`), since AMI natively supports Ollama
+
+**Files:**
+- `chrome/browser/resources/on_device_internals/` — relabeling, Ollama section
+- `chrome/browser/ui/webui/on_device_internals/` — Ollama API data provider
+
+---
+
+#### `chrome://optimization-guide-internals` — ML Optimization Guide
+
+Chrome uses a server-side optimization guide to decide which ML features to enable per device. This page shows active hints and registered types.
+
+**AMI's changes:**
+- Dark theme
+- **Banner**: "AMI Browser does not fetch optimization hints from Google servers. Local device capability is used directly."
+- Page title: "AMI Feature Optimization Status"
+- Hint table uses AMI card rows
+
+---
+
+#### `chrome://password-manager-internals` — Password Manager Debug
+
+Shows raw password manager logs and form parsing decisions.
+
+**AMI's changes:**
+- Dark theme
+- **Page title**: "AMI Vault — Debug Logs"
+- Log entries use AMI monospace style with color-coded severity
+- All "Google Password Manager" strings in the log output replaced with "AMI Vault"
+
+---
+
+#### `chrome://pref-internals` — Preferences Inspector
+
+Shows a JSON tree of all browser preferences (a huge flat dump). Power-user/developer tool.
+
+**AMI's changes:**
+- Dark theme
+- JSON tree rendered with AMI-styled expand/collapse controls (purple triangles)
+- **Search bar** added at the top — allows filtering preferences by key name (Chrome has no search on this page)
+- **"Copy to clipboard" button** for filtered results
+
+**Files:**
+- `chrome/browser/resources/pref_internals/` — search bar, styled JSON tree
+
+---
+
+#### `chrome://predictors` — Navigation Predictors
+
+Shows Chrome's preloading predictions (which URLs will be prefetched).
+
+**AMI's changes:**
+- Dark theme
+- Table rows use AMI card style
+- Prediction confidence shown as a visual bar (AMI purple gradient) not just a number
+
+---
+
+#### `chrome://memory-internals` — Memory Usage Per Process
+
+Shows memory usage broken down by tab, extension, and browser process.
+
+**AMI's changes:**
+- Dark theme
+- **Tab memory cards**: each tab shown as a card with its favicon, title, URL, and memory bar
+- Automation tabs (§18) shown with a 🤖 badge
+- Memory bars use AMI color scheme: green (<256MB), amber (256–512MB), red (>512MB)
+- **"Discard" button** per tab card (instantly frees memory for that tab)
+- **Total memory usage** shown prominently in the page header
+- Page title: "AMI Memory Usage"
+
+**Files:**
+- `chrome/browser/resources/memory_internals/` — card layout, AMI bars, discard button
+
+---
+
+#### `chrome://sandbox` — Sandbox Status
+
+Shows sandboxing status for each renderer process.
+
+**AMI's changes:**
+- Dark theme
+- Status badges: "Sandboxed ✅" in green, "Not sandboxed ⚠️" in amber
+- Page title: "AMI Process Sandbox Status"
+
+---
+
+#### `chrome://blob-internals` — Blob Storage Debug
+
+**AMI's changes:**
+- Dark theme
+- Blob entries use AMI card rows with size, origin, MIME type
+- Page title: "AMI Blob Storage"
+
+---
+
+#### `chrome://invalidations` — Push Invalidation Service
+
+Chrome uses this for sync push notifications from Google servers.
+
+**AMI's changes:**
+- Dark theme
+- **Banner**: "AMI Browser uses AMI Sync instead of Google's invalidation service." (§33)
+- Page title: "AMI Sync — Push Invalidations"
+
+---
+
+#### `chrome://gcm-internals` — Google Cloud Messaging
+
+GCM is used for push notifications. AMI disables GCM by default (§1 Bug #8: `enable_gcm_driver = false`).
+
+**AMI's changes:**
+- If GCM is disabled (default): page shows "GCM is disabled in AMI Browser. Push notifications use the Web Push standard directly."
+- If somehow enabled: dark theme + page title "Push Messaging Debug"
+
+---
+
+#### `chrome://internals` — Internals Hub
+
+A recently-added hub page in Chrome that links to various internals pages.
+
+**AMI's changes:**
+- Dark theme
+- **Page title**: "AMI Browser — Internals Hub"
+- Links organized in an AMI card grid (categories: User Facing / Developer Tools / Diagnostic / AI & Automation)
+- Adds links to AMI-specific internal pages (`chrome-untrusted://mission-control/`, `chrome-untrusted://ami-chat/`, `chrome://settings/ami/devtools-mcp`)
+
+**Files:**
+- `chrome/browser/resources/internals/` — AMI grid layout, AMI-specific page links
+
+---
+
+#### `chrome://local-state` — Local State JSON
+
+Raw JSON dump of `Local State` preference file.
+
+**AMI's changes:**
+- Dark theme
+- JSON rendered with AMI-styled syntax highlighting (keys in accent color, strings in green, numbers in blue)
+- **Search/filter bar** added
+- **"Export" button** for saving the JSON
+
+---
+
+#### `chrome://new-tab-page` vs `chrome://newtab`
+
+Both routes should load the AMI NTP (§5). Ensure both are consistently redirected to the same AMI NTP WebUI.
+
+**Files:** `chrome/browser/ui/webui/chrome_web_ui_configs.cc` — unified routing
+
+---
+
+#### `chrome://hats` — Happiness Tracking Surveys
+
+Google occasionally shows in-browser satisfaction survey prompts (HaTS). AMI does not participate in Google's satisfaction tracking.
+
+**AMI's changes:**
+- Suppress all HaTS survey prompts at compile time (`chrome/browser/ui/hats/hats_service.cc` → no-op)
+- If the page is accessed directly: show "AMI Browser does not display satisfaction surveys from Google."
+
+---
+
+#### `chrome://family-link-user-internals` — Family Link
+
+Google's parental control integration.
+
+**AMI's changes:**
+- Dark theme
+- If Family Link is not configured: "Family Link / parental controls are not active. AMI Browser is unmanaged."
+- No structural redesign needed (extremely rarely visited)
+
+---
+
+#### `chrome://lens` — Google Lens
+
+Google Lens integration for visual search.
+
+**AMI's changes:**
+- This page / feature is **removed** from AMI Browser. Any attempt to access `chrome://lens` redirects to `chrome://newtab` with a toast notification: "Google Lens is not available in AMI Browser. Use 'Ask AMI about this image' from the right-click menu instead."
+- The right-click menu item "Search image with Google" (§22.6) is replaced with "🤖 Ask AMI about this image" — which sends the image to the AMI Chat sidebar
+
+---
+
+#### `chrome://ntp-cards-internals` / `chrome://ntp-tiles-internals`
+
+NTP card and tile debug pages.
+
+**AMI's changes:**
+- Dark theme
+- Page title: "AMI New Tab Page — Debug"
+- Both pages merged or linked from each other
+
+---
+
+#### `chrome://webui-gallery` — WebUI Component Gallery
+
+A developer-only page showing every WebUI component (buttons, inputs, dialogs, etc.) as a visual gallery. Used by Chromium developers to test UI components.
+
+**AMI's changes:**
+- Dark theme
+- **AMI component gallery** added as the first section — shows all AMI custom UI components (AMI card, chip, button variants, sidebar, toast) in a live preview
+- Existing Chromium components shown below with AMI styling applied
+- Page title: "AMI WebUI Component Gallery"
+
+This page is essentially a **living style guide** for AMI's WebUI design system.
+
+**Files:**
+- `chrome/browser/resources/webui_gallery/` — AMI components section
+- New: `chrome/browser/resources/webui_gallery/ami_components/` — AMI component demos
+
+---
+
+#### `chrome://hid-internals` — HID (Human Interface Devices)
+
+Shows HID device connections (game controllers, etc.).
+
+**AMI's changes:** Dark theme only.
+
+---
+
+#### `chrome://serial-internals` — Serial Port Connections
+
+**AMI's changes:** Dark theme only.
+
+---
+
+#### `chrome://browser-switch` — Internet Explorer / Edge mode
+
+Windows-only — not applicable to AMI (Linux-first). Stub out or hide.
+
+---
+
+#### `chrome://welcome` — Welcome Page
+
+Chrome's onboarding page shown on first run.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│               [AMI Logo — large, centered]                    │
+│                                                                │
+│          Welcome to AMI Browser                               │
+│      Fast, private, AI-powered browsing                       │
+│                                                                │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  🤖 AI Built In        No API keys needed               │  │
+│  │  🛡 Privacy First      No Google tracking               │  │
+│  │  ⚡ 206 AI Skills      Automate anything                │  │
+│  │  💎 AMI Rewards        Earn while browsing              │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                                │
+│       [Sign In to AMI Account]   [Continue as Guest]          │
+│                                                                │
+│  ─ Import from Chrome / Firefox / other browser ─             │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. Full AMI brand experience — no Google logo, no "Set Chrome as default" prompt
+2. Feature highlights (AI / Privacy / Skills / Rewards) in a visual card strip
+3. **Import from other browsers** offered immediately (Chrome, Firefox, Brave, Edge)
+4. **"Sign In to AMI Account"** via Clerk (not Google Sign-In)
+
+**Files:**
+- `chrome/browser/resources/welcome/` — full page replacement
+- `chrome/browser/ui/webui/welcome/welcome_ui.cc` — AMI branding, Clerk sign-in link
+
+---
+
+#### `chrome://profile-picker` — Profile Picker
+
+Shown when starting Chrome with multiple profiles, or via the profile icon.
+
+**AMI's layout:**
+- Profile cards use AMI card style with avatar, name, and profile color indicator
+- **"Add profile" button** uses AMI accent style
+- Remove "Sign in with Google" from the add-profile flow — AMI uses its own account system
+- Background: AMI dark navy, not Chrome's light gray
+
+**Files:**
+- `chrome/browser/resources/profile_picker/` — card redesign, dark background
+- `chrome/browser/ui/webui/signin/profile_picker_ui.cc` — remove Google sign-in push
+
+---
+
+### 31.15 Interstitial Pages — Custom AMI Safety Screens
+
+Interstitial pages appear as full-page overlays when Chrome detects a dangerous site (phishing, malware, SSL errors, expired certs, etc.). Currently they look like Chrome — AMI redesigns them with the same security intent but AMI visual identity.
+
+**Why this matters:** Interstitials are one of the most visible browser-branded moments. When a user sees a red "Dangerous site" warning, the giant Chrome shield logo and "Google Safe Browsing" attribution tells them exactly what browser they're using. AMI replaces all of this with AMI branding and messaging.
+
+---
+
+#### SSL Certificate Error — `chrome://interstitials/ssl`
+
+**Chrome's layout:** Giant red lock icon, "Your connection is not private", NET::ERR_CERT_AUTHORITY_INVALID, "Back to safety" / "Advanced" buttons.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│         🔒 [broken lock icon — AMI red #e94560]               │
+│                                                                │
+│         Connection Not Private                                 │
+│                                                                │
+│  example.com has a certificate problem. AMI Shield has        │
+│  blocked this page to protect your data.                      │
+│                                                                │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ ⚠ Certificate issue: Expired · 3 days ago             │   │
+│  │   Issued by: Unknown CA                               │   │
+│  │   Error code: NET::ERR_CERT_DATE_INVALID              │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│                                                                │
+│  [← Go Back (Safe)]          [Advanced ▾]                     │
+│                                                                │
+│  Advanced:                                                     │
+│  This server could not prove it is example.com.              │
+│  [Proceed to example.com (unsafe)]                            │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **"Google Safe Browsing"** attribution removed — replaced with "AMI Shield"
+2. **Error details card** shows specific cert issue upfront (Chrome buries this under "Advanced")
+3. **Background**: AMI dark navy with red accent — not Chrome's white with red header
+4. **Icon**: AMI-styled broken lock (red #e94560) not Chrome's generic broken lock
+5. **"Go Back" button** is the primary (large, prominent) button — Chrome places it secondary to the warning text
+
+**Files:**
+- `components/security_interstitials/content/resources/ssl/ssl.html` / `.ts`
+- `components/security_interstitials/content/resources/ssl/ssl.css`
+
+---
+
+#### Safe Browsing Phishing/Malware Warning
+
+**Chrome's layout:** Red page with Chrome shield logo, "Deceptive site ahead", "Back to safety" button. Attribution: "Google Safe Browsing".
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│  [AMI Shield — red variant]                                   │
+│                                                                │
+│  🛡 AMI Shield: Dangerous Site Blocked                        │
+│                                                                │
+│  AMI Shield has blocked access to this site because it        │
+│  was reported as a phishing / malware site.                   │
+│                                                                │
+│  ╭────────────────────────────────────────────────────────╮   │
+│  │ 🎣 Phishing site — tries to steal your credentials    │   │
+│  │    Reported: 2 days ago                                │   │
+│  ╰────────────────────────────────────────────────────────╯   │
+│                                                                │
+│  [← Back to Safety]                [Details & Override]       │
+│                                                                │
+│  Override (not recommended):                                   │
+│  "I understand the risk — proceed anyway"                     │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Structural changes:**
+1. **"Google Safe Browsing"** → **"AMI Shield"** everywhere
+2. Dark background (AMI navy with red accent) instead of Chrome's white
+3. **Threat category** shown in a card up front (phishing / malware / unwanted software)
+4. Override option is buried in a collapsible section (same as Chrome — don't make it easy to bypass)
+
+**Files:**
+- `components/security_interstitials/content/resources/interstitial_large.html`
+- `chrome/browser/safe_browsing/` — AMI branding strings
+
+---
+
+#### Dangerous Download Warning
+
+Shown in the download bar/toast when Chrome detects a suspicious download.
+
+**AMI's layout:**
+- Toast notification style (matching §22.9 Download Toast) with red accent
+- "⚠ AMI Shield blocked this download — reported as malware"
+- [Keep anyway] button in a collapsed details section
+- No mention of "Google Safe Browsing"
+
+---
+
+#### Mixed Content Warning
+
+When an HTTPS page loads HTTP resources.
+
+**AMI's changes:**
+- The shield icon in the address bar uses AMI styling (already part of §22.4)
+- The info bubble text: "This page has insecure content — AMI Shield is blocking mixed content requests"
+- Remove "Learn more" links that point to Google support pages → link to AMI docs
+
+---
+
+#### Captive Portal Detection Page
+
+When connecting to a Wi-Fi network with a captive portal (hotel Wi-Fi, etc.), Chrome shows a generic notice.
+
+**AMI's layout:**
+- Dark themed notice card
+- "🌐 Network Login Required — This network requires you to sign in before browsing."
+- [Open Network Login Page] button in AMI accent style
+- No Chrome branding
+
+---
+
+#### `chrome://lookalike-url-blocked` — Lookalike Domain Warning
+
+Chrome warns when a URL looks like a typosquat of a popular domain.
+
+**AMI's changes:**
+- Dark theme
+- "⚠ AMI Shield: Suspicious URL" — styling matches the other AMI Shield interstitials
+- Show the suspected target domain prominently: "Did you mean → google.com?"
+
+---
+
+#### Offline / No Connection Page (`chrome://network-error/-106`)
+
+The famous dinosaur game. AMI replaces it entirely.
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│                [AMI Logo — subtle, faded]                     │
+│                                                                │
+│           No Internet Connection                              │
+│                                                                │
+│  Try:                                                          │
+│  · Checking your Wi-Fi or cable connection                    │
+│  · Restarting your router                                     │
+│  · Checking for a captive portal (hotel/office Wi-Fi)         │
+│                                                                │
+│  [Try Again]                    [Network Settings]            │
+│                                                                │
+│  ────────────────────────────────────────────────────────     │
+│                                                                │
+│   🤖  AMI Offline Game                [Play]                  │
+│   Keep your mind sharp while you wait                         │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**The AMI Offline Game:**
+- Replace Chrome's T-Rex runner with an **AMI-branded mini game** — theme: a purple robot (`◉_◉`) navigating through data packets
+- Same simple endless runner mechanic (spacebar to jump), but entirely AMI-themed
+- High score persisted in `localStorage`
+
+**Files:**
+- `components/neterror/resources/offline.html` / `.ts` / `.css` — full replacement
+- New: `components/neterror/resources/ami_offline_game.ts` — AMI offline game
+
+---
+
+#### `chrome://crash` and Sad Tab (`chrome://sad`)
+
+When a tab crashes, Chrome shows a sad-face emoji tab with "Aw, Snap!" or "He's dead, Jim."
+
+**AMI's layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│                  [AMI Logo — glitched/static]                 │
+│                                                                │
+│              Tab crashed                                      │
+│                                                                │
+│  Something went wrong loading this page.                      │
+│  Error: STATUS_ACCESS_VIOLATION (or similar)                  │
+│                                                                │
+│  [↺ Reload]              [Report to AMI Team]                 │
+│                                                                │
+│  Tip: If this keeps happening, try:                           │
+│  · Disabling extensions one by one                            │
+│  · Clearing the site's cached data                            │
+│  · Opening in a new tab                                       │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Changes:**
+1. "Aw, Snap!" text replaced with "Tab crashed" (clearer, less juvenile)
+2. **Error code shown** — developers find this useful; Chrome hides it by default
+3. **"Report to AMI Team"** button — sends anonymous crash data to AMI's backend (only if user has opted in to crash reporting)
+4. AMI logo with a "glitch" animation (CSS glitch effect) instead of a sad face
+
+**Files:**
+- `chrome/browser/ui/sad_tab.cc` — text strings
+- `components/neterror/resources/` — sad tab HTML/CSS
+
+---
+
+### 31.16 Browser Dialog & Prompt UI Takeover
+
+Chromium shows many types of native dialogs and in-page prompts. These are separate from the `chrome://` WebUI pages — they are native `views::Widget` dialogs, popup bubbles, and in-page prompt bars. All must be redesigned to match AMI.
+
+---
+
+#### Permission Request Bubbles (Camera, Mic, Location, Notifications, Clipboard)
+
+When a site requests a permission, Chrome shows a small popup bubble below the address bar.
+
+**Chrome's layout:** White bubble with a site favicon, permission description, [Allow] / [Block] buttons. The "Allow" button is a plain blue Material button.
+
+**AMI's layout:**
+```
+╭────────────────────────────────────────────────────────╮
+│  [favicon] example.com                           [✕]   │
+│  wants to: 📍 Know your location                        │
+│                                                         │
+│  [🚫 Block]              [✓ Allow]                     │
+│                                                         │
+│  ○ Remember my choice for this site                    │
+╰────────────────────────────────────────────────────────╯
+```
+
+**Changes:**
+1. Dark background (`#1e1e3a`) not white
+2. Permission icon is colored and contextual (📍 for location, 🎤 for mic, 📷 for camera, 🔔 for notifications)
+3. **Block is the left/first button** (visually equal prominence to Allow — Chrome makes Allow the primary blue button, subtly nudging users to allow)
+4. **"Remember my choice"** checkbox visible by default (Chrome hides this in a sub-menu)
+5. AMI-styled buttons: Block = outlined, Allow = AMI accent filled
+
+**Files:**
+- `chrome/browser/ui/views/permission_bubble/permission_prompt_bubble_base_view.cc`
+- `chrome/browser/ui/views/permission_bubble/permission_prompt_bubble_view.cc`
+
+---
+
+#### JavaScript Alert / Confirm / Prompt Dialogs
+
+`window.alert()`, `window.confirm()`, `window.prompt()` — the most hated web dialogs.
+
+**Chrome's layout:** System-modal white dialog with generic Chrome icon and plain text.
+
+**AMI's layout:**
+```
+╭────────────────────────────────────────────────────────╮
+│ [favicon] example.com says:                     [✕]    │
+│─────────────────────────────────────────────────────── │
+│                                                         │
+│  Are you sure you want to delete this item?             │
+│                                                         │
+│─────────────────────────────────────────────────────── │
+│                [Cancel]          [OK]                   │
+╰────────────────────────────────────────────────────────╯
+```
+
+**Changes:**
+- Dark background + rounded corners (AMI card style)
+- Site origin shown prominently in header
+- For `prompt()`: input field uses AMI input style
+- **Suppress "Prevent this page from creating additional dialogs"** checkbox redesigned as a visible AMI-styled toggle (not hidden in small print)
+- Dialog shadow: `0 8px 32px rgba(0,0,0,0.4)`
+
+**Files:**
+- `components/app_modal/javascript_app_modal_dialog_views.cc`
+- `components/app_modal/views/` — dialog view
+
+---
+
+#### File Chooser Dialog
+
+When a site opens `<input type="file">` — the OS file picker. This is a native OS dialog on Linux (GTK/KDE).
+
+**AMI's changes (Linux GTK):**
+- Use Chromium's built-in file chooser override for consistent theming
+- Apply GTK dark mode preference via `GtkSettings` to match AMI's dark theme
+- No custom file picker dialog (would require massive effort) — instead ensure dark mode propagation is correct
+
+---
+
+#### Basic Auth Dialog (HTTP Authentication)
+
+When a server sends a `401 WWW-Authenticate` challenge, Chrome shows a username/password dialog.
+
+**AMI's changes:**
+- Dark background + AMI card style
+- Site origin and realm shown in header
+- Input fields use AMI input style (dark background, purple focus ring)
+- **"AMI Vault" integration**: if the site has a saved password, offer auto-fill: "🔑 Fill with saved credential for this site"
+
+**Files:**
+- `chrome/browser/ui/views/login_view.cc` — AMI styling + Vault integration
+
+---
+
+#### "Open with application" / Protocol Handler Dialog
+
+When a site registers as a handler for a protocol (mailto:, tel:, etc.) or asks to open an external app.
+
+**AMI's changes:**
+- AMI card style dialog
+- Protocol/app shown with icon
+- **Default changed**: Chrome defaults to "Open" — AMI defaults to "Cancel" (safer)
+- Checkbox: "Remember for this site" visible by default
+
+---
+
+#### Tab Unload / "Leave site?" Dialog
+
+Shown when navigating away from a page with `beforeunload` listener.
+
+**AMI's changes:**
+- AMI card style dialog (currently uses native browser dialog)
+- "Leave site?" with [Stay] (primary) and [Leave] (secondary) — AMI makes "Stay" the visually prominent button (Chrome treats both equally)
+
+---
+
+#### PWA Install Prompt
+
+When a Progressive Web App prompts the user to install it.
+
+**Chrome's layout:** Small popup with app name, icon, and "Install" button.
+
+**AMI's layout:**
+```
+╭────────────────────────────────────────────────────────╮
+│  Install App                                    [✕]    │
+│─────────────────────────────────────────────────────── │
+│  [app icon — 64px]  App Name                           │
+│                     app.example.com                    │
+│─────────────────────────────────────────────────────── │
+│  This app will be added to your AMI sidebar and        │
+│  can be launched from the AMI app launcher.            │
+│                                                         │
+│  [Cancel]                    [Install →]               │
+╰────────────────────────────────────────────────────────╯
+```
+
+**Changes:**
+- Dark card style
+- "Added to your AMI sidebar" — installed PWAs appear in the AMI Spaces/sidebar (§3)
+- No "Chrome" mention in "Open in Chrome window" copy — changed to "Open as standalone app"
+
+**Files:**
+- `chrome/browser/ui/views/web_apps/web_app_install_dialog_delegate.cc`
+
+---
+
+#### "Translate this page?" Bar
+
+When Chrome auto-detects a foreign language, it shows a translation bar below the address bar.
+
+**AMI's changes:**
+- Dark card bubble instead of Chrome's white bottom bar
+- Positioned as a **floating bubble** near the top-right of the content area (not a bar spanning the full width)
+- **"AMI Translate"** branding (not "Google Translate")
+- Uses the user's configured AI provider for translation (AMI setting) instead of Google Translate by default
+- Quick language selector: "Translate [Detected: French] → [English ▾]"
+
+**Files:**
+- `chrome/browser/ui/views/translate/translate_bubble_view.cc` — floating bubble, AMI branding
+- `components/translate/content/browser/translate_driver.cc` — non-Google translate provider support
+
+---
+
+#### Find-in-Page Bar
+
+When the user presses `Ctrl+F`.
+
+**Chrome's layout:** Fixed bar at the top-right of the content area. White background, plaintext input, up/down arrows, match counter.
+
+**AMI's layout:**
+```
+                         ╭──────────────────────────────────────╮
+                         │ 🔍  Search in page...    2 of 14  ↑↓ [✕]│
+                         ╰──────────────────────────────────────╯
+```
+
+**Changes:**
+- Floating, pill-shaped bubble (not a bar attached to the browser chrome)
+- Dark background (`#1e1e3a`), AMI border, rounded corners `20px`
+- AMI purple highlight for matched text (instead of Chrome's yellow)
+- Match counter inline in the input (not a separate label)
+- Smooth slide-in animation
+
+**Files:**
+- `chrome/browser/ui/views/find_bar/find_bar_view.cc` — pill shape, dark style
+- `chrome/browser/ui/views/find_bar/find_bar_host.cc` — floating positioning
+- `third_party/blink/renderer/core/editing/finder/` — match highlight color
+
+---
+
+#### Extension Install Dialog
+
+When a user installs an extension (from AMI WebStore or drag-drop).
+
+**AMI's layout:**
+```
+╭────────────────────────────────────────────────────────╮
+│  Add Extension?                                 [✕]    │
+│─────────────────────────────────────────────────────── │
+│  [ext icon 64px]  Extension Name                       │
+│                   by Publisher Name                    │
+│─────────────────────────────────────────────────────── │
+│  This extension will be able to:                       │
+│  · Read and change all your data on websites           │
+│  · Manage your downloads                               │
+│─────────────────────────────────────────────────────── │
+│  [Cancel]                    [Add Extension →]         │
+╰────────────────────────────────────────────────────────╯
+```
+
+**Changes:**
+- Dark card style
+- Permissions list uses bullet points with icons (🌐 for site access, 📥 for downloads, etc.)
+- Remove "Verified by Chrome Web Store" badge — replace with "AMI WebStore" verification badge (or "Unverified" if installed manually)
+
+**Files:**
+- `chrome/browser/ui/views/extensions/extension_install_dialog_view.cc`
+
+---
+
+#### Extension Removed / Disabled Notification
+
+Chrome shows a bar when an extension is remotely disabled (e.g., removed from Chrome Web Store).
+
+**AMI's changes:**
+- Toast notification style (AMI toast system, §22.10) instead of Chrome's infobar
+- "Extension 'X' was disabled" — no mention of "Chrome Web Store" — mention "AMI WebStore" or "Removed by publisher"
+
+---
+
+#### Cookie / Storage Notifications
+
+Info bubbles about cookie access, storage partitioning, etc.
+
+**AMI's changes:**
+- Dark card style for all cookie-related info bubbles
+- "AMI Shield" branding in tracking-related notifications
+- Privacy-friendly default messaging ("Third-party cookies are blocked by AMI Shield" not Chrome's neutral phrasing)
+
+---
+
+#### "Save password?" / "Update password?" Bubble
+
+**Chrome's layout:** Small white popup below the address bar with a key icon.
+
+**AMI's layout:**
+```
+╭──────────────────────────────────────────────╮
+│ 🔑 Save to AMI Vault?                  [✕]  │
+│  Username:  john@company.com                  │
+│  Password:  ●●●●●●●●                          │
+│─────────────────────────────────────────────│
+│  [Not now]              [Save to Vault →]    │
+╰──────────────────────────────────────────────╯
+```
+
+**Changes:**
+- "Save to AMI Vault" branding (not "Save password")
+- Show username prominently in the bubble
+- Dark card style
+
+**Files:**
+- `chrome/browser/ui/views/passwords/password_save_update_view.cc`
+
+---
+
+#### Media Controls Toolbar (Picture-in-Picture)
+
+When media is playing and the user enables Picture-in-Picture, Chrome shows a mini floating player.
+
+**AMI's changes:**
+- PiP window border: AMI dark navy with subtle accent glow
+- Control buttons (play/pause/close) use AMI icon style
+- **"Send to AMI Chat"** button added — sends the current video frame as an image to the AI chat for analysis
+
+**Files:**
+- `chrome/browser/ui/views/overlay/video_overlay_window_views.cc` — AMI styling + Send to Chat
+
+---
+
+### 31.17 Status Bar & Info Indicators
+
+The status bar (shown at bottom of window when hovering links) and various info indicators throughout the browser chrome.
+
+---
+
+#### Link Hover Status Bar
+
+When hovering over a link, Chrome shows the URL at the bottom-left of the window.
+
+**AMI's changes:**
+- Floating pill-shaped tooltip near the bottom-left (not a full-width status bar)
+- Background: `#1e1e3a` with `8px` border-radius
+- Show shortened URL: domain + truncated path (full URL on long hover or `Ctrl` hold)
+- For http:// links: show a red "⚠ Not secure" badge inline with the URL
+
+**Files:**
+- `chrome/browser/ui/views/status_bubble.cc` — pill shape, dark style, URL shortening
+
+---
+
+#### Address Bar Security Indicator
+
+The lock/info icon in the URL bar that shows connection security.
+
+**AMI's changes:**
+- **Secure (HTTPS)**: subtle AMI green lock (not Chrome's gray lock)
+- **Not secure (HTTP)**: red "⚠ Not secure" (same as Chrome but AMI colored)
+- **Extension controlled**: purple AMI icon
+- Click opens a card bubble: connection details, certificate info, cookie count, Shield block count for this site
+
+**Files:**
+- `chrome/browser/ui/views/location_bar/icon_label_bubble_view.cc`
+- `chrome/browser/ui/views/location_bar/page_info_bubble_view.cc` — page info card
+
+---
+
+#### Page Info Bubble (Click the Lock Icon)
+
+**Chrome's layout:** Layered panels starting with "Connection is secure", with drilldown for certificate, cookies, site data.
+
+**AMI's layout:**
+```
+╭────────────────────────────────────────────────────────╮
+│  example.com                                    [✕]   │
+│─────────────────────────────────────────────────────── │
+│  🔒 Connection secure — TLS 1.3                        │
+│  🛡 AMI Shield: 14 trackers blocked                   │
+│  🍪 Cookies: 2 (both first-party)                     │
+│  📍 Location: Blocked                                  │
+│─────────────────────────────────────────────────────── │
+│  [View Certificate]  [Site Settings]  [Privacy Report] │
+╰────────────────────────────────────────────────────────╯
+```
+
+**Changes:**
+1. **AMI Shield stats** shown prominently (trackers blocked count)
+2. **Active permissions** listed inline (location blocked, camera not requested, etc.)
+3. **Single panel** instead of Chrome's drill-down layers — key info at a glance
+4. Dark card style
+
+**Files:**
+- `chrome/browser/ui/views/page_info/page_info_bubble_view.cc` — single panel layout, AMI Shield data
+
+---
+
+### 31.18 Full Internal Pages — Master Inventory
+
+A complete inventory of every `chrome://` and `chrome-untrusted://` URL in Chromium 146, with AMI treatment status:
+
+| URL | Treatment | Priority |
+|-----|-----------|----------|
+| `chrome://about` | Redirect → `chrome://version` | P0 |
+| `chrome://accessibility` | Dark theme | P2 |
+| `chrome://app-service-internals` | Dark theme | P3 |
+| `chrome://apps` | AMI card style, empty state | P2 |
+| `chrome://attribution-internals` | Dark theme | P3 |
+| `chrome://autofill-internals` | Dark theme | P2 |
+| `chrome://blob-internals` | Dark theme + card rows | P2 |
+| `chrome://bluetooth-internals` | Dark theme + card rows | P2 |
+| `chrome://bookmarks` | Full redesign (§31.3) | P0 |
+| `chrome://browser-switch` | N/A (Windows only, stub out) | — |
+| `chrome://cast` | Dark theme + AMI branding | P2 |
+| `chrome://certificate-manager` | Card rows, AMI buttons | P1 |
+| `chrome://chrome-urls` | Categorized grid (§31.9) | P1 |
+| `chrome://components` | Card rows per component | P1 |
+| `chrome://crashes` | Card rows, opt-in messaging | P1 |
+| `chrome://credits` | AMI header + AMI credits | P1 |
+| `chrome://device-log` | Dark theme + monospace | P2 |
+| `chrome://discards` | Automation tab markers | P1 |
+| `chrome://downloads` | Full redesign (§31.3) | P0 |
+| `chrome://extensions` | Full redesign (§31.3) | P0 |
+| `chrome://family-link-user-internals` | Dark theme only | P3 |
+| `chrome://flags` | AMI section at top (§31.3) | P1 |
+| `chrome://gcm-internals` | Disabled notice | P2 |
+| `chrome://gpu` | Section reorder + copy btn | P1 |
+| `chrome://hats` | Suppressed | P0 |
+| `chrome://hid-internals` | Dark theme | P3 |
+| `chrome://histograms` | Dark theme + AMI header | P2 |
+| `chrome://history` | Full redesign (§31.3) | P0 |
+| `chrome://identity-internals` | Dark theme + AMI tokens | P2 |
+| `chrome://indexeddb-internals` | Dark theme + card panels | P2 |
+| `chrome://inspect` | Dark theme + branding | P2 |
+| `chrome://internals` | AMI categorized hub | P1 |
+| `chrome://invalidations` | AMI Sync notice | P2 |
+| `chrome://lens` | Removed → AMI Ask | P0 |
+| `chrome://local-state` | Dark + search + syntax hl | P2 |
+| `chrome://management` | AMI managed/unmanaged notice | P1 |
+| `chrome://media-engagement` | Dark + card rows | P2 |
+| `chrome://media-internals` | Dark + card players | P2 |
+| `chrome://memory-internals` | Full redesign — memory cards | P1 |
+| `chrome://net-internals` | Chip tabs + Shield tab | P1 |
+| `chrome://network-errors` | Dark + AMI error previews | P2 |
+| `chrome://new-tab-page` | → AMI NTP (§5) | P0 |
+| `chrome://newtab` | → AMI NTP (§5) | P0 |
+| `chrome://ntp-cards-internals` | Dark theme | P3 |
+| `chrome://ntp-tiles-internals` | Dark theme | P3 |
+| `chrome://omnibox` | Dark + AMI providers | P2 |
+| `chrome://on-device-internals` | AMI Local AI + Ollama | P1 |
+| `chrome://optimization-guide-internals` | Dark + offline notice | P2 |
+| `chrome://password-manager` | AMI Vault full redesign | P0 |
+| `chrome://password-manager-internals` | Dark + AMI Vault label | P2 |
+| `chrome://policy` | AMI Policies section | P1 |
+| `chrome://predictors` | Dark + visual conf bars | P2 |
+| `chrome://pref-internals` | Dark + search + syntax hl | P2 |
+| `chrome://print` | Full redesign (§31.6) | P1 |
+| `chrome://process-internals` | Dark + automation markers | P2 |
+| `chrome://profile-picker` | AMI card style + dark bg | P1 |
+| `chrome://quota-internals` | Dark + AMI usage bars | P2 |
+| `chrome://safe-browsing` | AMI Threat Protection label | P1 |
+| `chrome://safety-check` | Full redesign (§31.6) | P1 |
+| `chrome://sandbox` | Dark + status badges | P2 |
+| `chrome://serial-internals` | Dark theme | P3 |
+| `chrome://serviceworker-internals` | Dark + status badges | P2 |
+| `chrome://settings` | Full redesign (§31.3) | P0 |
+| `chrome://signin-internals` | Dark + AMI account label | P2 |
+| `chrome://site-engagement` | Dark + purple score bars | P2 |
+| `chrome://suggestions` | Dark + offline notice | P2 |
+| `chrome://sync-internals` | Dark + AMI Sync notice | P2 |
+| `chrome://system` | Dark + card sections + copy | P1 |
+| `chrome://tab-search` | Expanded search + automations | P1 |
+| `chrome://tracing` | Dark + AMI labels | P2 |
+| `chrome://translate-internals` | Dark + AMI Translate notice | P2 |
+| `chrome://ukm` | Dark + no-telemetry banner | P2 |
+| `chrome://usb-internals` | Dark theme | P3 |
+| `chrome://user-actions` | Dark + monospace log | P2 |
+| `chrome://version` | Full redesign (§31.3) | P1 |
+| `chrome://webrtc-internals` | Dark + connection cards | P2 |
+| `chrome://webrtc-logs` | Dark + monospace | P2 |
+| `chrome://webui-gallery` | AMI component section first | P2 |
+| `chrome://welcome` | Full AMI onboarding | P1 |
+| `chrome://whats-new` | AMI changelog | P1 |
+| `chrome-untrusted://ami-chat/` | AMI Chat (§4) — new | P0 |
+| `chrome-untrusted://mission-control/` | Mission Control (§18) — new | P0 |
+| `chrome-untrusted://workflow-builder/` | Workflow Builder (§18.9) — new | P1 |
+
+**Priority key:** P0 = ship with V3 launch · P1 = ship within 30 days · P2 = ship within 90 days · P3 = nice to have
+
+---
+
+## 32. Linux Desktop Integration — Native OS Experience
+
+> **Why Linux-first matters:** AMI Browser targets Linux as its primary platform. Chromium on Linux has rough edges in OS integration — the app doesn't feel native. AMI fixes all of these to make the browser feel like a first-class Linux citizen on both GNOME (Wayland/X11) and KDE Plasma.
+
+---
+
+### 32.1 `.desktop` File & Application Metadata
+
+The `.desktop` file controls how the application appears in the OS app launcher, file manager, and taskbar.
+
+**Current Chromium `chromium-browser.desktop` (what we inherit):**
+```ini
+[Desktop Entry]
+Name=Chromium Web Browser
+Exec=/usr/bin/chromium-browser %U
+Icon=chromium-browser
+Type=Application
+Categories=Network;WebBrowser;
+```
+
+**AMI's `ami-browser.desktop`:**
+```ini
+[Desktop Entry]
+Version=1.0
+Name=AMI Browser
+GenericName=Web Browser
+Comment=Fast, private, AI-powered web browser
+Exec=/usr/lib/ami-browser/ami-browser %U
+Icon=ami-browser
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;AI;
+Keywords=ami;browser;web;ai;agent;automation;privacy;
+StartupNotify=true
+StartupWMClass=ami-browser
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/ami;
+
+# AMI-specific protocol handler
+[Desktop Action NewWindow]
+Name=New Window
+Exec=/usr/lib/ami-browser/ami-browser --new-window
+
+[Desktop Action NewIncognitoWindow]
+Name=New Private Window
+Exec=/usr/lib/ami-browser/ami-browser --incognito
+
+[Desktop Action OpenAIChat]
+Name=Open AMI Chat
+Exec=/usr/lib/ami-browser/ami-browser --open-ami-chat
+
+[Desktop Action MissionControl]
+Name=Mission Control
+Exec=/usr/lib/ami-browser/ami-browser --open-mission-control
+```
+
+**Key improvements:**
+- `StartupWMClass=ami-browser` — ensures taskbar grouping works correctly in GNOME/KDE
+- `MimeType` includes `x-scheme-handler/ami` — handles `ami://` deep links from iOS app and external sources
+- **Jump list actions** (New Window, Private Window, AMI Chat, Mission Control) — right-click the taskbar icon in GNOME/KDE to access these instantly
+- `Keywords` includes "ai", "agent", "automation" — makes the browser findable by these terms in app search
+
+**Files:**
+- `chrome/installer/linux/ami-browser.desktop` — new desktop file
+- `chrome/installer/linux/ami-browser-stable.desktop` — stable channel variant
+
+---
+
+### 32.2 System Tray Integration
+
+AMI Browser should have an optional **system tray icon** that persists after the window is closed — showing running automations, unread AI chat messages, and quick access to the app.
+
+**Tray icon behavior:**
+- Shown when at least one automation is running OR user has enabled "Keep in tray"
+- Icon: AMI logo (16×16, 22×22, 24×24 — standard tray sizes)
+- If automations are running: badge with count
+- **Right-click menu:**
+  ```
+  ┌─────────────────────────────────┐
+  │ AMI Browser                     │
+  │ ─────────────────────────────── │
+  │ ● Amazon task — 43% complete    │
+  │ ● LinkedIn task — 40% complete  │
+  │ ─────────────────────────────── │
+  │ Open AMI Browser                │
+  │ Open Mission Control            │
+  │ Open AMI Chat                   │
+  │ ─────────────────────────────── │
+  │ Keep in tray when closed [✓]    │
+  │ ─────────────────────────────── │
+  │ Quit                            │
+  └─────────────────────────────────┘
+  ```
+
+**Implementation:**
+- Use `libappindicator3` (GNOME) / `libdbusmenu` (KDE) for system tray
+- New: `chrome/browser/ui/linux/ami_tray_icon.h/.cc`
+- Chromium already has `StatusIcon` infrastructure for Linux — extend it
+
+**Files:**
+- `chrome/browser/ui/views/status_icons/status_icon_linux.cc` — tray icon implementation
+- New: `chrome/browser/ui/linux/ami_tray_icon.h/.cc` — AMI-specific tray logic
+- `chrome/browser/app_controller_mac.cc` equivalent for Linux: `chrome/browser/ui/linux/ami_application_handler.cc`
+
+**Effort:** 4–6 hours
+
+---
+
+### 32.3 Wayland & X11 Native Feel
+
+Chrome/Chromium on Wayland has known issues. AMI fixes them all:
+
+**Issues to fix:**
+1. **Window decorations (CSD vs SSD):** On GNOME Wayland, Chrome uses client-side decorations that look off. AMI uses proper CSD with AMI-styled title bar (§22.12)
+2. **Fractional scaling:** On HiDPI Wayland displays, Chrome's fractional scaling can be blurry. Force `--enable-features=UseOzonePlatform --ozone-platform=wayland` and ensure `--force-device-scale-factor` is set correctly from the system's scale factor
+3. **Clipboard sync:** Chrome on Wayland doesn't always sync clipboard properly. Apply the `--enable-features=ClipboardHistoryRefresh` and Wayland clipboard fixes
+4. **File portal:** Use `xdg-portal` for file dialogs on both Wayland and X11 (consistent native dialog)
+5. **IME (Input Method Editor):** Ensure proper IBus/Fcitx5 integration for CJK input on Wayland
+6. **Screen capture:** Use `xdg-desktop-portal` PipeWire screen capture (not just X11 XSHM) for Wayland screen sharing
+
+**Launch flags (set by default in AMI's startup wrapper):**
+```bash
+#!/bin/bash
+# /usr/lib/ami-browser/ami-browser-wrapper
+
+# Detect Wayland
+if [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+    FLAGS="--ozone-platform=wayland
+           --enable-features=UseOzonePlatform,WaylandWindowDecorations
+           --gtk-version=4"
+else
+    FLAGS="--ozone-platform=x11"
+fi
+
+# HiDPI — read scale from gsettings or KDE
+if command -v gsettings >/dev/null 2>&1; then
+    SCALE=$(gsettings get org.gnome.desktop.interface scaling-factor 2>/dev/null | tr -d "'")
+    [ -n "$SCALE" ] && [ "$SCALE" -gt 1 ] && FLAGS="$FLAGS --force-device-scale-factor=$SCALE"
+fi
+
+exec /usr/lib/ami-browser/ami-browser $FLAGS "$@"
+```
+
+**Files:**
+- `chrome/installer/linux/ami-browser-wrapper` — shell wrapper with flag detection
+- `chrome/browser/ui/views/frame/browser_frame_view_linux.cc` — CSD improvements
+
+**Effort:** 4–6 hours
+
+---
+
+### 32.4 File Association & MIME Types
+
+AMI Browser should be registered as the default handler for web content types:
+
+```xml
+<!-- /usr/share/mime/packages/ami-browser.xml -->
+<mime-info>
+  <mime-type type="x-scheme-handler/http">
+    <comment>HTTP URL</comment>
+    <glob pattern="http://*"/>
+  </mime-type>
+  <mime-type type="x-scheme-handler/https">
+    <comment>HTTPS URL</comment>
+    <glob pattern="https://*"/>
+  </mime-type>
+  <mime-type type="x-scheme-handler/ami">
+    <comment>AMI Browser Protocol</comment>
+    <glob pattern="ami://*"/>
+  </mime-type>
+  <mime-type type="text/html">
+    <glob pattern="*.html"/>
+    <glob pattern="*.htm"/>
+  </mime-type>
+</mime-info>
+```
+
+**Post-install setup:**
+```bash
+# Run during package install (postinst script)
+xdg-mime default ami-browser.desktop x-scheme-handler/http
+xdg-mime default ami-browser.desktop x-scheme-handler/https
+xdg-mime default ami-browser.desktop x-scheme-handler/ami
+update-mime-database /usr/share/mime
+update-desktop-database /usr/share/applications
+gtk-update-icon-cache /usr/share/icons/hicolor
+```
+
+**Files:**
+- `chrome/installer/linux/ami-browser.xml` — MIME type registration
+- `chrome/installer/linux/postinst` — post-install script
+
+---
+
+### 32.5 System Notifications (libnotify / Portal)
+
+When AMI wants to show a desktop notification (automation complete, update available, approval needed), use the system notification system rather than Chrome's own notification popup.
+
+**Implementation:**
+- Use `libnotify` for D-Bus notifications on both GNOME and KDE
+- Notifications appear in the system notification center
+- Automation completion notification example:
+  ```
+  ╭──────────────────────────────────────╮
+  │ [AMI icon] AMI Browser               │
+  │ ✅ Automation complete               │
+  │ "Buy AA batteries" finished.         │
+  │ Cart total: $12.99                   │
+  │ [View Result]  [Dismiss]             │
+  ╰──────────────────────────────────────╯
+  ```
+- Approval-needed notifications are **persistent** (don't auto-dismiss) and have action buttons ("Approve" / "Deny") usable directly from the notification center
+
+**Files:**
+- `chrome/browser/notifications/notification_platform_bridge_linux.cc` — libnotify integration
+- New: `chrome/browser/ami/ami_notification_service.h/.cc` — AMI-specific notification helper
+
+**Effort:** 2–3 hours
+
+---
+
+### 32.6 Application Icon Set — All Required Sizes
+
+Linux requires icons in many sizes for different contexts (app launcher, taskbar, file manager, etc.):
+
+| Size | Format | Use |
+|------|--------|-----|
+| 16×16 | PNG | Taskbar, system tray, menus |
+| 22×22 | PNG | KDE Plasma system tray |
+| 24×24 | PNG | GNOME panel |
+| 32×32 | PNG | App switcher |
+| 48×48 | PNG | App launcher |
+| 64×64 | PNG | Large icon view |
+| 96×96 | PNG | GNOME Activities |
+| 128×128 | PNG | App store, high DPI |
+| 256×256 | PNG | Modern launchers |
+| 512×512 | PNG | High DPI, 2× |
+| Scalable | SVG | Rendering at any size |
+
+**Icon design spec:**
+- Background: AMI navy (`#1a1a2e`) rounded to a circle/squircle at larger sizes
+- Foreground: AMI logo mark in accent red (`#e94560`) + white
+- At 16/22px: simplified version (just the AMI monogram / globe icon)
+- At 48px+: full AMI logo with wordmark
+
+**Files:**
+- `chrome/app/theme/ami/` — full icon set
+- `chrome/installer/linux/hicolor/*/apps/ami-browser.png` — each size
+
+---
+
+### 32.7 Autostart & Background Service
+
+When automations are scheduled or running, AMI Browser should optionally start in the background at login (system tray only, no window).
+
+**Implementation:**
+- Settings → AMI → "Start AMI in background at login" (default: off)
+- Creates `~/.config/autostart/ami-browser-background.desktop`:
+  ```ini
+  [Desktop Entry]
+  Type=Application
+  Name=AMI Browser Background
+  Exec=/usr/lib/ami-browser/ami-browser --no-startup-window --enable-background-mode
+  Hidden=false
+  X-GNOME-Autostart-enabled=true
+  ```
+- When running in background mode: only the tray icon is shown (§32.2), no browser window
+- A "tray-only" window manager hint prevents the browser from appearing in the taskbar/dock when no windows are open
+
+**Files:**
+- `chrome/browser/ui/linux/ami_background_mode.cc` — background mode management
+- `chrome/browser/resources/settings/ami_startup_section.ts` — autostart toggle
+
+**Effort:** 2–3 hours
+
+---
+
+## 33. AMI Browser Sync — Own Cloud, Zero Google
+
+> **Problem:** Chromium's sync infrastructure is deeply tied to Google Accounts and Google servers. Chrome syncs bookmarks, history, passwords, settings, and extensions to `google.com/accounts`. AMI Browser does NOT use Google Sync — it uses its own sync backend, built on the existing AMI Exchange server infrastructure.
+
+---
+
+### 33.1 What Gets Synced
+
+| Data | Chrome Sync | AMI Sync |
+|------|-------------|----------|
+| Bookmarks | Google Drive / servers | AMI server (`api.ami.exchange/sync`) |
+| History | Google servers (anonymized) | AMI server (end-to-end encrypted) |
+| Passwords | Google Account | AMI Vault (E2E encrypted) |
+| Open tabs | Google servers | AMI server |
+| Extensions list | Google servers | AMI server |
+| Settings | Google servers | AMI server |
+| Spaces (§3) | N/A (Chrome has Profiles) | AMI server |
+| AI chat history | N/A | AMI server |
+| Automation history | N/A | AMI server |
+| Reward balance | N/A | AMI Rewards backend |
+
+---
+
+### 33.2 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        AMI Browser                              │
+│                                                                 │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                  AMI Sync Engine                           │ │
+│  │  (Replaces Chromium's SyncService / SyncClient)            │ │
+│  │                                                            │ │
+│  │  DataTypes:                                                │ │
+│  │  Bookmarks → AmiBookmarkSyncBridge                        │ │
+│  │  History   → AmiHistorySyncBridge                         │ │
+│  │  Passwords → AmiVaultSyncBridge (E2E encrypted)           │ │
+│  │  Tabs      → AmiTabSyncBridge                             │ │
+│  │  Settings  → AmiPreferenceSyncBridge                      │ │
+│  │  Spaces    → AmiSpaceSyncBridge (new data type)           │ │
+│  └──────────────────────────┬─────────────────────────────────┘ │
+│                             │ HTTPS                              │
+└─────────────────────────────┼───────────────────────────────────┘
+                              │
+                    ┌─────────▼───────────┐
+                    │  AMI Sync Server     │
+                    │  api.ami.exchange    │
+                    │  /api/sync/v1        │
+                    │                     │
+                    │  Auth: Clerk JWT     │
+                    │  Storage: MongoDB    │
+                    │  Encryption: AES-256 │
+                    └─────────────────────┘
+```
+
+---
+
+### 33.3 Encryption Model
+
+AMI Sync uses **end-to-end encryption** for sensitive data (passwords, history, chat history):
+
+1. **Encryption key derivation:** User's AMI account password + salt → PBKDF2 → 256-bit AES key (generated client-side, never sent to server)
+2. **Sync payload:** `{ encrypted_data: base64(AES-GCM(plaintext)), iv: base64, version: 1 }`
+3. **Server stores only ciphertext** — AMI cannot read passwords or history
+4. **Key recovery:** Encrypted key wrapped with a recovery code (12-word BIP-39 mnemonic) shown during account setup
+
+Non-sensitive data (bookmarks titles/URLs, extension list, open tab URLs) is stored server-side but tied to the authenticated Clerk JWT — only accessible by the authenticated user.
+
+---
+
+### 33.4 Cross-Device Sync
+
+When a user signs into AMI on a second device:
+1. AMI Chat sidebar shows: "📱 New device connected — iPhone (AMI Browser iOS)" with a timestamp
+2. **Open Tabs** from other devices appear in a "Other devices" section in Tab Search (§31.6) and the tab manager
+3. **Bookmarks** merge (deduplicated by URL)
+4. **History** merges with 90-day retention
+5. **Spaces** (§3) sync their tab lists, pinned sites, and settings
+
+---
+
+### 33.5 Settings UI — `chrome://settings/ami/sync`
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  🔄 AMI Sync                                                   │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  ● Signed in as: john@company.com                             │
+│  Last synced: 2 minutes ago                   [Sync now]      │
+│                                                                │
+│  Synced data:                                                  │
+│  ╭──────────────────────────────────────────────────────────╮ │
+│  │ ✓ Bookmarks           ✓ Open tabs                       │ │
+│  │ ✓ History             ✓ Extensions                      │ │
+│  │ ✓ AMI Vault (E2E 🔒)  ✓ Settings                       │ │
+│  │ ✓ Spaces              ✓ AI chat history                 │ │
+│  ╰──────────────────────────────────────────────────────────╯ │
+│                                                                │
+│  Connected devices:                                            │
+│  ╭──────────────────────────────────────────────────────────╮ │
+│  │ 💻 This device (Ubuntu 24.04) — Active now               │ │
+│  │ 📱 AMI Browser iOS — Last seen 5 min ago                 │ │
+│  ╰──────────────────────────────────────────────────────────╯ │
+│                                                                │
+│  [Sign out of sync]    [Manage encryption key]                 │
+│  [Delete all sync data]                                        │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 33.6 Implementation
+
+**Phase 1 (V3 launch): Replace Google sync with no-op + AMI Sync lite**
+- Disable Chromium's `SyncService` entirely (`BUILDFLAG(ENABLE_SYNC) = false` for Google-specific parts)
+- Implement AMI Sync as an extension-level service (runs in the Hub extension, syncs via the AMI Exchange server)
+- This avoids the complexity of patching Chromium's sync C++ stack for V3
+
+**Phase 2 (V4): Native C++ AMI Sync Engine**
+- Implement `AmiSyncService` as a proper Chromium component replacing `SyncService`
+- Binary-level integration means sync works even without the Hub extension loaded
+
+**Server side (already exists):** The AMI Exchange MongoDB backend (`mongodb+srv://autoapplyami:...`) has user document structure that can be extended with a `sync` collection per user. Add REST endpoints at `api.ami.exchange/api/sync/v1/{data_type}` with Clerk authentication.
+
+**Files (Phase 1):**
+- New: `chrome/browser/ami/sync/ami_sync_extension_bridge.h/.cc` — calls Hub extension sync API
+- `chrome/browser/ui/webui/settings/ami_sync_handler.h/.cc` — settings UI data provider
+- Server: add `/api/sync/v1/` routes to existing Express backend
+
+**Effort:** Phase 1: 8–10 hours · Phase 2: 40–60 hours
+
+---
+
+## 34. AMI WebStore — Extension Distribution Platform
+
+> **Problem:** Chrome extensions are distributed via the Chrome Web Store — a Google-controlled platform that can remove extensions, requires Google account login, and tracks installs. AMI Browser needs its own extension distribution.
+
+---
+
+### 34.1 What It Is
+
+The AMI WebStore is a curated extension marketplace accessible at:
+- **In-browser:** `chrome-untrusted://ami-webstore/` (native WebUI, fast, no external request)
+- **Web:** `https://store.ami.exchange/` (public website, links deep-link to the browser)
+
+---
+
+### 34.2 Categories & Curation
+
+| Category | Examples |
+|----------|---------|
+| **AMI Certified** | Extensions verified and maintained by AMI team |
+| **Productivity** | Tab managers, note-taking, clipboard tools |
+| **AI Tools** | LLM integrations, writing assistants |
+| **Privacy** | Additional ad blockers, cookie managers |
+| **Developer** | JSON formatter, API testers, REST clients |
+| **Web3 / Crypto** | Wallets, DeFi tools (compatible with AMI Rewards) |
+| **Automation** | Tools that work with AMI's OpenClaw agent |
+| **Themes** | Custom browser themes (color schemes) |
+
+---
+
+### 34.3 The `chrome-untrusted://ami-webstore/` Page
+
+**Layout:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│  🏪 AMI WebStore                         🔍 Search extensions  │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  [All]  [AMI Certified]  [Productivity]  [AI]  [Privacy] ...  │
+│                                                                │
+│  ── Featured ──────────────────────────────────────────────   │
+│  ╭──────────────╮  ╭──────────────╮  ╭──────────────╮        │
+│  │ [icon 64px]  │  │ [icon 64px]  │  │ [icon 64px]  │        │
+│  │ Ext Name     │  │ Ext Name     │  │ Ext Name     │        │
+│  │ ★★★★★ 4.8   │  │ ★★★★☆ 4.2   │  │ ★★★★★ 4.9   │        │
+│  │ 12k installs │  │ 5k installs  │  │ 8k installs  │        │
+│  │ [Install →]  │  │ [Install →]  │  │ [+ Add]      │        │
+│  ╰──────────────╯  ╰──────────────╯  ╰──────────────╯        │
+│                                                                │
+│  ── AI-Powered Tools ──────────────────────────────────────   │
+│  ...                                                           │
+└────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 34.4 Extension Distribution Infrastructure
+
+**Backend (existing AMI Exchange server):**
+```
+/api/store/v1/
+├── GET /extensions          — list with filters/search/pagination
+├── GET /extensions/:id      — single extension detail + reviews
+├── GET /extensions/:id/crx  — download .crx package
+├── POST /extensions/:id/install — record install (analytics)
+├── POST /extensions/:id/review  — submit review (Clerk auth required)
+└── GET /categories          — list of categories
+```
+
+**`.crx` hosting:** Extensions stored as `.crx` files in object storage (S3-compatible). The browser downloads and installs them using Chromium's existing CRX install path — no Chrome Web Store required.
+
+**Override Chrome Web Store install path:**
+```cpp
+// chrome/browser/extensions/crx_installer.cc
+// When source is kExternalPolicyDownload or a URL matching ami.exchange:
+// skip Chrome Web Store validation, use AMI's own signature verification
+bool CrxInstaller::AllowInstall(const extensions::Extension* extension) {
+  if (IsAmiStoreSource(source_url_))
+    return VerifyAmiStoreSignature(extension);
+  return VerifyChromeWebStoreSignature(extension);
+}
+```
+
+**AMI signature verification:** Each extension in the AMI WebStore is signed with AMI's private key. The browser ships with AMI's public key and verifies it on install — same model as Chrome Web Store but using AMI's own PKI.
+
+---
+
+### 34.5 Replace All "Chrome Web Store" References
+
+Across all of Chromium's UI, any reference to "Chrome Web Store" is replaced with "AMI WebStore":
+
+| Location | Chrome text | AMI text |
+|----------|------------|---------|
+| `chrome://extensions` footer | "Discover more extensions on the Chrome Web Store" | "Discover extensions at AMI WebStore" |
+| Extension install dialog | "From Chrome Web Store" | "From AMI WebStore" |
+| Manage extensions button | (links to CWS) | Links to `chrome-untrusted://ami-webstore/` |
+| Error: unknown extension | "Find in Chrome Web Store" | "Search AMI WebStore" |
+| Settings → Extensions section | "Visit Chrome Web Store" | "Open AMI WebStore" |
+
+**Files:**
+- All `.grd` / `.grdp` files containing "Chrome Web Store" string IDs
+- `chrome/browser/extensions/webstore_installer.cc` — redirect install source
+- `chrome/browser/ui/webui/extensions/extensions_ui.cc` — remove CWS promo data
+
+---
+
+### 34.6 Compatibility with Chrome Web Store Extensions
+
+Users may want to install extensions from the Chrome Web Store. AMI Browser supports this via a compatibility mode:
+
+**Settings → Extensions → "Allow Chrome Web Store extensions"** (default: OFF for security/branding)
+
+When enabled:
+- Shows a warning: "Chrome Web Store extensions are not verified by AMI. Install only from sources you trust."
+- Allows dragging `.crx` files into the extensions page to install
+- Allows the user to manually visit `chromewebstore.google.com` and install from there (Chrome Web Store's install flow still works in any Chromium browser if the extension ID is allowed)
+
+When disabled (default):
+- Blocks navigation to `chromewebstore.google.com` with a friendly redirect: "AMI Browser's extension platform is the AMI WebStore. [Open AMI WebStore]"
+
+**Files:**
+- New: `chrome/browser/ami/ami_webstore_policy.h/.cc` — enforcement
+- `chrome/browser/extensions/` — CWS block + AMI redirect
+
+**Effort:** 8–12 hours (store backend + browser integration)
+
+---
+
+### 34.7 Developer Extension Submission
+
+Developers can submit extensions to the AMI WebStore via:
+- `https://store.ami.exchange/developer` — developer dashboard
+- Submit a `.zip` of the extension source
+- AMI team reviews within 48 hours (manual review for launch, automated later)
+- Approved extensions get an AMI Store signature applied server-side
+
+**Revenue share:** Paid extensions: 70% developer / 30% AMI Exchange (same as Apple's model). Free extensions: no fee.
+
+---
+
+## Table of Contents Update
+
+The following new sections were added (update Table of Contents):
+
+29. [V3 AI Architecture — Server-Side Proxy (No BYO Keys)](#29-v3-ai-architecture--server-side-proxy-no-byo-keys)
+30. [Replace Native Chromium "Ask AI" / Side Panel Button with AMI Chat](#30-replace-native-chromium-ask-ai--side-panel-button-with-ami-chat)
+31. [Opera-Style Chromium WebUI Takeover — Full Internal Page Redesign](#31-opera-style-chromium-webui-takeover--full-internal-page-redesign)
+32. [Linux Desktop Integration — Native OS Experience](#32-linux-desktop-integration--native-os-experience)
+33. [AMI Browser Sync — Own Cloud, Zero Google](#33-ami-browser-sync--own-cloud-zero-google)
+34. [AMI WebStore — Extension Distribution Platform](#34-ami-webstore--extension-distribution-platform)
+35. [Performance & Startup Optimization](#35-performance--startup-optimization)
+36. [Packaging & Distribution](#36-packaging--distribution)
+37. [Update Channel System](#37-update-channel-system)
+38. [Security Hardening](#38-security-hardening)
+39. [Build System & GN Configuration](#39-build-system--gn-configuration)
+40. [Privacy & Telemetry Policy](#40-privacy--telemetry-policy)
+41. [Accessibility Enhancements](#41-accessibility-enhancements)
+42. [iOS / Desktop Companion Integration](#42-ios--desktop-companion-integration)
+43. [Testing Strategy](#43-testing-strategy)
+44. [V3 → V4 Roadmap](#44-v3--v4-roadmap)
+
+---
+
+## 35. Performance & Startup Optimization
+
+> **Goal:** AMI Browser cold-starts in ≤1.5s on a mid-range Linux machine (8 GB RAM, NVMe SSD). Hot-start (already in RAM) in ≤200ms. Memory footprint ≤180 MB at idle with one tab open.
+
+Chromium's default build is not optimized for startup — it does a lot of work upfront that can be deferred. This section documents every optimization AMI applies.
+
+---
+
+### 35.1 V8 JavaScript Engine Optimization
+
+**Profile-Guided Optimization (PGO):**
+- Build with `chrome_pgo_phase=2` using a training workload that simulates AMI's typical usage (NTP load, AMI Chat open, one web page)
+- PGO typically reduces startup time by 5–15% on benchmarks
+
+**V8 Startup Snapshot:**
+- Chromium ships a V8 context snapshot (`snapshot_blob.bin`) containing pre-compiled built-in JS
+- AMI extends this snapshot with AMI's own frequently-used JS (the Chat panel bootstrap, OpenClaw worker initialization)
+- Tool: `v8/tools/mksnapshot` with AMI additions
+
+**V8 Code Cache (bytecode caching):**
+- Enable `--v8-cache-options=code` to persist compiled bytecode for commonly visited pages
+- AMI pre-caches bytecode for its own `chrome-untrusted://` pages during the post-install step
+- Cache location: `~/.config/ami-browser/Default/Code Cache/`
+
+**Files:**
+- `chrome/BUILD.gn` — PGO flags
+- `v8/tools/ami_snapshot_extras.js` — new: AMI additions to V8 snapshot
+- `chrome/browser/ami/startup/ami_v8_precache.cc` — post-install bytecode warming
+
+---
+
+### 35.2 Startup Task Deferral
+
+Chrome initializes many services at startup that users don't immediately need. AMI defers them:
+
+| Service | Chrome default | AMI |
+|---------|---------------|-----|
+| Google Sync | Starts immediately | Removed — replaced by AMI Sync (§33), initialized on demand |
+| Safe Browsing updates | Starts immediately | Deferred 5s after first tab loads |
+| Spell-check download | Starts immediately | Deferred until user types in a text field |
+| Extension background pages | Start with browser | Deferred 3s after first tab loads |
+| Crash reporter | Starts immediately | Deferred 10s after launch |
+| Network quality estimator | Starts immediately | Disabled (no Google servers) |
+| Optimization hints fetch | Starts immediately | Disabled (no Google servers) |
+| Metrics/UMA upload | Starts immediately | Disabled (§40) |
+| GCM push service | Starts immediately | Disabled (§32.6) |
+| Media router (Cast) | Starts immediately | Deferred 10s |
+
+**Implementation:** `chrome/browser/browser_process_impl.cc` — wrap each service init in an `ami::PostDelayedTask()` call where appropriate.
+
+**Files:**
+- `chrome/browser/browser_process_impl.cc` — deferred initialization
+- New: `chrome/browser/ami/startup/ami_startup_scheduler.h/.cc` — centralized deferred init manager
+
+**Effort:** 6–8 hours
+
+---
+
+### 35.3 Pre-Rendered New Tab Page
+
+The AMI NTP (§5) is the first thing users see. Pre-render it in a spare renderer process while Chrome is still initializing the browser process:
+
+```cpp
+// chrome/browser/ui/startup/startup_browser_creator_impl.cc
+// After first browser window is created, pre-warm a renderer for NTP:
+void StartupBrowserCreatorImpl::PrewarmNTPRenderer() {
+  content::RenderProcessHost::WarmupSpareRenderProcessHost(profile_);
+  prerender_manager_->AddPrerenderFromBrowser(
+      GURL("chrome://newtab"), /* frame_tree_node */ nullptr);
+}
+```
+
+This means the NTP is fully rendered and ready before the user even sees it — perceived startup time drops dramatically.
+
+**Files:**
+- `chrome/browser/ui/startup/startup_browser_creator_impl.cc` — NTP pre-render on startup
+
+---
+
+### 35.4 Memory Optimization — Per-Tab
+
+**Tab discarding (already in §31.8 for `chrome://discards`):**
+- AMI aggressively discards background tabs after 15 minutes of inactivity (configurable in settings)
+- Automation tabs are never discarded (§18)
+- Default Chrome: discard after ~1 hour or under memory pressure only
+
+**Compressed memory (zswap):**
+- AMI ships with a `sysctl` recommendation: `vm.swappiness=10`, `zswap.enabled=1`
+- Settings → AMI → Performance → "Optimize system memory settings for AMI Browser" (applies recommended sysctl on click)
+
+**Per-process renderer splitting:**
+- AMI keeps the default Chromium site-isolation model (one renderer process per origin) but adds a **renderer process cap** of 8 processes to prevent runaway memory with many tabs
+- Tabs beyond the cap share renderer processes with same-origin sites where possible
+
+**Memory pressure handling:**
+- Custom `chrome/browser/memory/ami_memory_pressure_monitor.cc` that listens to system memory pressure (via `malloc_info()` / cgroup memory events on Linux)
+- When >80% RAM used: auto-discard the least-recently-used non-automation tab
+- When >90% RAM used: suspend media in background tabs
+
+**Files:**
+- `chrome/browser/memory/ami_memory_pressure_monitor.h/.cc` — new
+- `chrome/browser/resource_coordinator/tab_lifecycle_unit.cc` — 15-min discard threshold
+
+---
+
+### 35.5 Network Pre-optimization
+
+**DNS prefetching:**
+- AMI pre-resolves DNS for the user's most visited 20 domains at startup (pulled from local history)
+- Done without sending any data to Google DNS — uses the user's configured DNS-over-HTTPS provider (§38.3)
+
+**HSTS preload list:**
+- Chromium ships a large HSTS preload list (`transport_security_state_static.json`). AMI trims it to the 10,000 most commonly visited domains (the full list has 300,000+ entries) to reduce memory footprint — full list still available via runtime fetch if a domain isn't in the trimmed set
+
+**TCP pre-connect:**
+- Pre-open TCP connections to the AMI Exchange API endpoints (`api.ami.exchange`, `sync.ami.exchange`) at startup so the first AMI Sync push is instant
+
+**Files:**
+- `chrome/browser/net/ami_startup_dns_prefetch.cc` — history-based DNS pre-resolution
+- `net/http/transport_security_state_static.json` — trimmed to 10k entries
+
+---
+
+### 35.6 Startup Benchmark Targets
+
+| Metric | Target | How measured |
+|--------|--------|-------------|
+| Cold start to first paint (NTP) | ≤ 1.5s | `time ami-browser --new-window` — wall clock to first contentful paint |
+| Hot start (second launch, already in cache) | ≤ 200ms | Same |
+| Memory at idle (1 tab, NTP) | ≤ 180 MB RSS | `smem -P ami-browser` total |
+| Memory per additional tab (simple pages) | ≤ 30 MB | Measured across 10 tabs |
+| Memory per additional tab (JS-heavy, e.g. Gmail) | ≤ 80 MB | Measured across 5 tabs |
+| Extension background page overhead | ≤ 5 MB each | `chrome://memory-internals` |
+| Time to AMI Chat ready | ≤ 800ms after NTP paint | JS performance.mark() in Chat |
+
+---
+
+## 36. Packaging & Distribution
+
+> AMI Browser is distributed as native Linux packages (`.deb`, `.rpm`), an `AppImage` for distro-agnostic installs, and potentially a Flatpak/Snap for sandboxed environments. This section documents each format, the package contents, and the install scripts.
+
+---
+
+### 36.1 Debian / Ubuntu Package (`.deb`)
+
+**Package name:** `ami-browser`
+**Architecture:** `amd64` (primary), `arm64` (secondary)
+**Target distros:** Ubuntu 22.04+, Debian 12+, Pop!_OS, Linux Mint, elementary OS
+
+**Package structure:**
+```
+ami-browser_1.0.0_amd64.deb
+├── /usr/lib/ami-browser/
+│   ├── ami-browser                  — main binary
+│   ├── ami-browser-wrapper          — shell wrapper (§32.3)
+│   ├── chrome-sandbox               — SUID sandbox
+│   ├── chrome_crashpad_handler      — crash handler
+│   ├── libEGL.so                    — bundled EGL
+│   ├── libGLESv2.so                 — bundled GLES
+│   ├── resources/
+│   │   ├── ami_resources.pak        — UI resources
+│   │   └── v8_context_snapshot.bin  — V8 snapshot (§35.1)
+│   └── locales/
+│       └── en-US.pak                — and other locales
+├── /usr/bin/
+│   └── ami-browser → /usr/lib/ami-browser/ami-browser-wrapper
+├── /usr/share/applications/
+│   └── ami-browser.desktop
+├── /usr/share/icons/hicolor/
+│   ├── 16x16/apps/ami-browser.png
+│   ├── 48x48/apps/ami-browser.png
+│   ├── 128x128/apps/ami-browser.png
+│   └── scalable/apps/ami-browser.svg
+├── /usr/share/mime/packages/
+│   └── ami-browser.xml
+└── /etc/ami-browser/
+    └── ami-browser-defaults.conf    — admin-overridable defaults
+```
+
+**Control file:**
+```
+Package: ami-browser
+Version: 1.0.0
+Architecture: amd64
+Maintainer: AMI Exchange <packages@ami.exchange>
+Depends: libc6 (>= 2.31), libgtk-3-0 (>= 3.24), libglib2.0-0, libnss3 (>= 3.26), libappindicator3-1, libnotify4, fonts-liberation, xdg-utils
+Recommends: libvulkan1, libu2f-udev
+Conflicts: ami-browser-beta, ami-browser-unstable
+Homepage: https://ami.exchange
+Description: AMI Browser — Fast, private, AI-powered web browser
+ AMI Browser is a Chromium-based browser with built-in AI assistance,
+ automation capabilities, and privacy-first defaults.
+```
+
+**Install scripts:**
+- `postinst`: register MIME types, update icon cache, set as default browser (if user opts in), create `/etc/ami-browser/` defaults
+- `prerm`: unregister MIME types if no other browser installed, remove autostart entry
+
+**APT repository:**
+- Hosted at `https://packages.ami.exchange/apt/`
+- Users add: `deb [signed-by=/usr/share/keyrings/ami-browser.gpg] https://packages.ami.exchange/apt/ stable main`
+- Repository key fingerprint published at `https://ami.exchange/gpg`
+
+---
+
+### 36.2 RPM Package (`.rpm`)
+
+**Target distros:** Fedora 39+, RHEL 9+, openSUSE Leap 15.5+, CentOS Stream 9
+
+**Spec file key sections:**
+```spec
+Name:       ami-browser
+Version:    1.0.0
+Release:    1%{?dist}
+Summary:    AMI Browser — Fast, private, AI-powered web browser
+License:    BSD and LGPLv2+ and ASL 2.0 and MIT and GPLv2
+URL:        https://ami.exchange
+Requires:   gtk3 >= 3.24, nss >= 3.26, libappindicator, libnotify, xdg-utils
+
+%post
+update-mime-database %{_datadir}/mime &>/dev/null
+update-desktop-database %{_datadir}/applications &>/dev/null
+gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null
+
+%postun
+update-mime-database %{_datadir}/mime &>/dev/null
+update-desktop-database %{_datadir}/applications &>/dev/null
+```
+
+**DNF/YUM repository:**
+- `https://packages.ami.exchange/rpm/` — RPM repository with `.repo` file
+- Signed with AMI's GPG key (same key as Debian packages)
+
+---
+
+### 36.3 AppImage (Universal Linux Package)
+
+The AppImage bundles all dependencies into a single portable executable — no install required.
+
+**AppImage structure:**
+```
+AMI_Browser-1.0.0-x86_64.AppImage
+└── AppDir/
+    ├── AppRun                       — entry point shell script
+    ├── ami-browser.desktop
+    ├── ami-browser.svg
+    └── usr/
+        ├── bin/ami-browser          — wrapper
+        └── lib/ami-browser/         — same as .deb /usr/lib/ami-browser/
+            └── (all bundled .so files including GTK, NSS, etc.)
+```
+
+**Key AppImage behaviors:**
+- Self-contained — works on any Linux distro with kernel ≥ 4.15
+- **No root required** to run
+- First run: auto-integrates `.desktop` file and icon via `appimaged` (if installed) or prompts user
+- Can be placed in `~/Applications/` and double-clicked
+
+**Build tool:** `appimagetool` + `linuxdeploy` with GTK plugin
+
+**Files:**
+- `chrome/installer/linux/appimage/AppRun` — entry point
+- `chrome/installer/linux/appimage/build_appimage.sh` — build script
+
+---
+
+### 36.4 Flatpak (Sandboxed)
+
+Flatpak provides a sandboxed environment, common on GNOME-focused distros (Fedora Workstation, etc.).
+
+**App ID:** `exchange.ami.Browser`
+**Flatpak manifest:** `exchange.ami.Browser.yml`
+
+**Permissions required:**
+```yaml
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri         # GPU acceleration
+  - --filesystem=home    # Downloads, file access
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --env=GTK_PATH=/app/lib/gtk-3.0
+```
+
+**Distribution:** Flathub (`https://flathub.org/apps/exchange.ami.Browser`) — submitted after V3 launch stabilizes
+
+---
+
+### 36.5 Package Size Targets
+
+| Package | Target size | Notes |
+|---------|------------|-------|
+| `.deb` / `.rpm` | ≤ 120 MB | Compressed `.xz`; excludes bundled fonts (system fonts used) |
+| AppImage | ≤ 180 MB | Must bundle GTK, NSS; uses `upx` compression on binary |
+| Flatpak | ≤ 200 MB | Includes all runtime libs |
+| Install footprint on disk | ≤ 280 MB | `/usr/lib/ami-browser/` + shared assets |
+
+**Size reduction strategies:**
+- Strip debug symbols from release build (`strip -s`)
+- Use `xz -9` compression for `.deb`
+- Remove unused locales from `locales/` — ship only `en-US`, `fr`, `de`, `es`, `pt`, `ja`, `zh-CN` by default; others available as separate locale pack `.deb` files
+- Remove unused Chromium features compiled out (see §39)
+
+---
+
+## 37. Update Channel System
+
+> AMI Browser follows a three-channel release model similar to Chrome: Stable, Beta, and Nightly (Dev). This ensures users get tested stable releases while developers and testers can run the latest features.
+
+---
+
+### 37.1 Release Channels
+
+| Channel | Package name | Update frequency | Who uses it |
+|---------|-------------|-----------------|-------------|
+| **Stable** | `ami-browser` | Every 4–6 weeks | All users (default) |
+| **Beta** | `ami-browser-beta` | Every 2 weeks | Opt-in users, power users |
+| **Nightly** | `ami-browser-nightly` | Every night at 2AM UTC | Developers, testers |
+
+All three channels can be installed side-by-side (different package names, different install paths, different profile directories).
+
+---
+
+### 37.2 Auto-Update Mechanism
+
+AMI Browser does **not** use Google Update (`update_engine` / Google Software Update) — it implements its own:
+
+**Update check flow:**
+```
+Every 6 hours (Stable) / 2 hours (Beta) / 30 min (Nightly):
+
+Browser → GET https://updates.ami.exchange/api/update/check
+  Body: { channel, version, os, arch, locale }
+  
+Response:
+  { update_available: true, version: "1.1.0", 
+    url: "https://packages.ami.exchange/apt/.../ami-browser_1.1.0_amd64.deb",
+    sha256: "abc123...",
+    release_notes_url: "https://ami.exchange/changelog/1.1.0" }
+```
+
+**Update installation:**
+- **Linux `.deb`/`.rpm`:** AMI Browser invokes the system package manager (`apt`, `dnf`, `zypper`) via a helper process with `pkexec` (polkit) for privilege elevation — no running as root, no setuid tricks
+- **AppImage:** Download new AppImage to a temp path, verify SHA-256, then `mv` over the old one on next launch (the old one is in use during download)
+- **Flatpak:** `flatpak update exchange.ami.Browser` — handled by Flatpak's own update mechanism
+
+**Notification (no update nag):**
+- When an update is available, a **single** notification appears in the toolbar (a subtle dot on the AMI logo) and in `chrome://settings/ami/about`
+- No modal interruptions, no "Chrome is out of date" banners
+- **Scheduled restart update:** If the update requires a browser restart, the user sees a toast: "AMI Browser will update when you next close it." — the update is staged and applied on next cold start
+
+---
+
+### 37.3 Delta Updates
+
+Full browser downloads are 100MB+. AMI supports **delta updates** (patches) for users updating from the previous version:
+
+- Delta patch generated server-side using `bsdiff` between adjacent versions
+- Typical delta: 5–20 MB vs 120 MB full download
+- If delta patch fails to apply (checksum mismatch), fall back to full download automatically
+- Delta patches only available for Stable and Beta channels (Nightly always does full download)
+
+**Files:**
+- New: `chrome/browser/ami/updater/ami_update_client.h/.cc` — update check, download, verify
+- New: `chrome/browser/ami/updater/ami_delta_patcher.h/.cc` — bsdiff apply
+- New: `chrome/browser/ui/webui/settings/ami_update_handler.h/.cc` — settings page data
+
+---
+
+### 37.4 Rollback Support
+
+If a Stable update causes widespread crashes (detected via crash reporting §40):
+1. AMI server sets the update endpoint to return the previous version for affected configs
+2. Users see a toast: "AMI Browser was rolled back to 1.0.1 due to a critical issue. Update to 1.1.1 when available."
+3. The rolled-back version is pinned until a fixed release is available
+
+**Files:**
+- `chrome/browser/ami/updater/ami_update_client.cc` — rollback detection and version pin
+
+---
+
+### 37.5 `chrome://settings/ami/about`
+
+The About page (replaces `chrome://settings/help`):
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  About AMI Browser                                             │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  [AMI Logo]  AMI Browser                                       │
+│              Version 1.0.0 (Stable)                           │
+│              Chromium 146.0.7680.80                            │
+│                                                                │
+│  ✅ AMI Browser is up to date.                 [Check now]    │
+│                                                                │
+│  Release channel:  ● Stable  ○ Beta  ○ Nightly               │
+│                    [Switch channel]                            │
+│                                                                │
+│  ─────────────────────────────────────────────────────────    │
+│                                                                │
+│  Release notes for 1.0.0 ↗                                    │
+│  Report a bug ↗                                               │
+│  AMI Exchange website ↗                                       │
+│                                                                │
+│  OS: Ubuntu 24.04.1 LTS (Linux 6.8.0)                        │
+│  Architecture: x86_64                                         │
+│  Profile path: ~/.config/ami-browser/Default/                 │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 38. Security Hardening
+
+> AMI Browser builds on Chromium's already strong security model and adds additional hardening specific to its threat model: protecting users from web-based attacks, preventing data exfiltration to third parties, and securing the automation engine.
+
+---
+
+### 38.1 Compile-Time Security Flags
+
+Build flags applied in `args.gn` (documented in §39):
+
+```gn
+# Control Flow Integrity
+is_cfi = true
+use_cfi_icall = true
+use_cfi_cast = true
+
+# Stack protection
+enable_stack_protector = true
+
+# ASLR (Address Space Layout Randomization) — PIE binary
+is_pie = true
+
+# Fortify source (glibc buffer overflow detection)
+use_fortify_source = true
+
+# Shadow Call Stack (AArch64 only)
+use_shadow_call_stack = true  # arm64 build only
+```
+
+---
+
+### 38.2 Sandbox Hardening
+
+Chromium already sandboxes renderer processes with namespaces + seccomp-BPF. AMI adds:
+
+**Renderer process hardening:**
+- Enable `MADV_DONTFORK` on heap pages to prevent memory from leaking to forked child processes
+- `SECCOMP_MODE_FILTER` policy for renderers: whitelist of ≤50 syscalls (same as Chrome's policy + remove any syscalls not needed by AMI)
+- Audit the seccomp filter for AMI-specific code paths (the Ollama sidecar communication, DevTools MCP port)
+
+**GPU process sandboxing:**
+- On Wayland: GPU process uses a separate `DRM` fd passed via socket (no direct `/dev/dri` access in renderer)
+- Verify `--no-sandbox` flag is NOT set in production builds — fail build if detected in release config
+
+**Extension sandbox:**
+- Extensions in the AMI WebStore are reviewed for permissions. Extensions requesting `<all_urls>` access are flagged in the store UI with a warning badge
+
+**Files:**
+- `sandbox/linux/seccomp-bpf-helpers/ami_renderer_syscall_policy.cc` — AMI seccomp policy
+
+---
+
+### 38.3 DNS-over-HTTPS (DoH) — Default On
+
+Chrome enables DoH optionally. AMI enables it **by default** with user-configurable providers:
+
+**Default provider:** Cloudflare (`https://cloudflare-dns.com/dns-query`) — no logging policy
+**Alternative providers available:** NextDNS, AdGuard DNS, Mullvad, system resolver (off)
+
+**Settings location:** `chrome://settings/privacy` → "Use secure DNS" → always on with provider selector
+
+**AMI DoH behavior:**
+- DoH used for all DNS resolution including prefetch (§35.5)
+- Captive portal detection still uses plain DNS to detect captive portals (otherwise captive portals would never be detected)
+- When using a VPN: skip DoH and use VPN's DNS to avoid DoH traffic leaking outside VPN tunnel (detected via routing table check)
+
+**Files:**
+- `chrome/browser/net/dns_util.cc` — default DoH setting
+- `chrome/browser/ui/webui/settings/privacy_sandbox_handler.cc` — DoH provider list
+
+---
+
+### 38.4 Enhanced Tracking Protection (Always On)
+
+AMI ships with tracker blocking enabled by default for all users (not opt-in like Chrome's "Enhanced protection"):
+
+**Tracker blocking layers:**
+1. **DNS-level:** Block known tracker domains at DNS resolution time (using Cloudflare's Malware + Tracking list when using Cloudflare DoH)
+2. **Network-level:** AMI Shield's request blocker (uses uBlock Origin's lists compiled into the browser, §14)
+3. **JS-level:** Block fingerprinting scripts (canvas fingerprint, AudioContext fingerprint, WebGL fingerprint)
+4. **Cookie-level:** Third-party cookies blocked by default. First-party cookies: 7-day TTL cap for tracking cookies (Safari ITP-style)
+
+**Fingerprinting resistance:**
+- `navigator.userAgent` → sanitized UA string (no OS version, no specific Chromium build number)
+- `navigator.platform` → `"Linux x86_64"` always (not the actual CPU info)
+- `screen.width` / `screen.height` → rounded to nearest 10px
+- `Date` timezone → UTC for non-trusted sites (user can whitelist sites)
+- `navigator.hardwareConcurrency` → capped at 4 (not the actual core count)
+- `navigator.deviceMemory` → always returns `4` (not actual RAM)
+
+**Files:**
+- `third_party/blink/renderer/core/frame/navigator.cc` — UA, platform, hardware spoofing
+- `chrome/browser/ami/shield/ami_shield_fingerprint_protection.cc` — canvas, AudioContext spoofing
+
+---
+
+### 38.5 HTTPS-Only Mode
+
+AMI enables **HTTPS-Only Mode** by default (Chrome has this off by default):
+
+- All HTTP navigations are upgraded to HTTPS automatically
+- If upgrade fails, show an AMI-styled interstitial (§31.15): "This site doesn't support secure connections"
+- Mixed content is blocked (not just warned about)
+- HTTP sites in bookmarks show a `⚠` icon
+
+**Files:**
+- `chrome/browser/ssl/https_only_mode_tab_helper.cc` — enforce HTTPS-only default
+
+---
+
+### 38.6 AMI Shield — Integrated Security Dashboard
+
+`chrome://settings/ami/shield` is the central security control panel:
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  🛡 AMI Shield                                                 │
+│ ═══════════════════════════════════════════════════════════════│
+│                                                                │
+│  Today's stats:                                                │
+│  ╭──────────────┐ ╭──────────────═ ╭──────────────╮          │
+│  │ 1,247        │ │ 38           │ │ 12           │          │
+│  │ Trackers     │ │ Ads          │ │ Fingerprint  │          │
+│  │ blocked      │ │ blocked      │ │ attempts     │          │
+│  ╰──────────────╯ ╰──────────────╯ ╰──────────────╯          │
+│                                                                │
+│  Protections:                                                  │
+│  ● Tracker blocking          ON  [toggle]                     │
+│  ● Ad blocking               ON  [toggle]                     │
+│  ● Fingerprinting protection ON  [toggle]                     │
+│  ● HTTPS-Only Mode           ON  [toggle]                     │
+│  ● DNS-over-HTTPS            ON  Cloudflare [change]          │
+│  ● Safe Browsing             ON  AMI lists [manage]           │
+│                                                                │
+│  Per-site exceptions:  [Manage exceptions]                    │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 38.7 Automation Engine Security (OpenClaw)
+
+The OpenClaw automation agent (§18) has access to the browser and can navigate pages, fill forms, and click buttons. This is a powerful attack surface:
+
+**Security model for automation:**
+1. **Explicit approval required** for any automation that touches:
+   - Forms with `type="password"` fields
+   - Payment pages (detected by URL + page content heuristics)
+   - Pages in AMI's "Sensitive Sites" list (banking, medical, government)
+2. **Automation sandbox:** All agent JS runs in an isolated renderer context — it can't access the user's extension contexts or privileged AMI pages
+3. **MCP tool allowlist:** The DevTools MCP tools available to AI agents (§31.11) are restricted to read-only tools by default. Write/navigate tools require explicit user approval per session
+4. **Automation audit log:** Every action taken by an agent is logged to `~/.config/ami-browser/automation-log/` with timestamps, URLs, and action descriptions — accessible via `chrome://settings/ami/automation-log`
+5. **Rate limiting:** Agent can perform max 10 actions/second, 500 actions/session — prevents runaway loops from consuming system resources
+
+**Files:**
+- New: `chrome/browser/ami/automation/ami_automation_security.h/.cc` — approval gates
+- New: `chrome/browser/ami/automation/ami_automation_audit_log.h/.cc` — audit logging
+- `chrome/browser/ami/automation/openclaw_agent.cc` — rate limiting
+
+---
+
+## 39. Build System & GN Configuration
+
+> This section documents the complete GN args, build process, and patch management system for building AMI Browser from Chromium source.
+
+---
+
+### 39.1 Repository Structure
+
+AMI Browser is maintained as a **patch set on top of Chromium** — not a fork. The repository structure:
+
+```
+ami-browser/                          — AMI Browser repository
+├── chromium/                         — Chromium source (git submodule, pinned to 146.0.7680.80)
+├── patches/                          — Git patches applied on top of Chromium
+│   ├── 0001-ami-branding.patch       — Brand strings, colors, icons
+│   ├── 0002-ami-ntp.patch            — New Tab Page replacement
+│   ├── 0003-ami-chat-sidebar.patch   — AI Chat sidebar
+│   ├── 0004-remove-google-services.patch
+│   ├── 0005-ami-webui-takeover.patch — §31 WebUI redesigns
+│   ├── 0006-ami-shield.patch         — Tracker/ad blocking
+│   ├── ...
+│   └── 0042-ami-webstore.patch       — AMI WebStore
+├── ami_src/                          — AMI-specific source files (not patches)
+│   ├── chrome/browser/ami/           — Core AMI features
+│   ├── chrome/browser/resources/ami/ — AMI WebUI resources
+│   └── chrome-untrusted/             — AMI sandboxed WebUI pages
+├── scripts/
+│   ├── apply_patches.sh              — Apply all patches to chromium/
+│   ├── build.sh                      — Full build script
+│   ├── update_chromium.sh            — Bump Chromium version
+│   └── generate_patch.sh             — Create a new patch from staged changes
+├── args/
+│   ├── release.gn                    — Production build GN args
+│   ├── debug.gn                      — Debug build GN args
+│   └── asan.gn                       — ASAN build for testing
+└── CHANGELOG.md
+```
+
+---
+
+### 39.2 Production Build GN Args (`args/release.gn`)
+
+```gn
+# === AMI Browser Release Build Configuration ===
+# Chromium 146.0.7680.80 — AMI Browser 1.0.0
+
+# Target
+target_os = "linux"
+target_cpu = "x64"
+
+# Build type
+is_official_build = true
+is_debug = false
+symbol_level = 0             # No debug symbols in release
+
+# Component build (monolithic binary — smaller, faster startup)
+is_component_build = false
+
+# Chrome branding (enables official APIs, Widevine, etc.) replaced by AMI branding
+# We keep is_chrome_branded = false and implement needed APIs ourselves
+is_chrome_branded = false
+is_chromium_branded = false   # Our own branding
+ami_branded = true            # New GN arg for AMI-specific code paths
+
+# Compiler optimizations
+use_thin_lto = true           # Thin LTO for cross-translation-unit optimization
+chrome_pgo_phase = 2          # Profile-guided optimization (training run first)
+use_goma = true               # Goma/Siso distributed compilation
+
+# Features to ENABLE
+enable_widevine = true        # For DRM content (Netflix, etc.)
+enable_pdf = true             # Built-in PDF viewer
+enable_printing = true        # Print support
+use_system_libjpeg = false    # Bundled (consistent behavior)
+use_system_libpng = false
+use_system_zlib = true        # System zlib is fine
+
+# Features to DISABLE (Google services)
+enable_google_now = false
+enable_background_mode = false  # We implement our own (§32.7)
+enable_service_worker_core = true  # Keep — needed for web apps
+safe_browsing_mode = 1        # Local safe browsing lists only (no Google ping)
+enable_reporting = false      # No Chrome reporting API
+enable_network_error_logging = false
+enable_nacl = false           # Native Client — deprecated, disable
+enable_remoting = false       # Chrome Remote Desktop — not in AMI
+
+# Google API keys (intentionally blank — AMI does not use Google APIs)
+google_api_key = ""
+google_default_client_id = ""
+google_default_client_secret = ""
+
+# Proprietary codecs (important for media playback)
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"    # Enables H.264, AAC, MP3 in FFmpeg
+
+# Security
+is_cfi = true
+use_cfi_icall = true
+use_cfi_cast = true
+
+# DCHECK (debug assertions) — off in release, on in debug
+dcheck_always_on = false
+
+# AMI-specific GN args
+ami_exchange_api_url = "https://api.ami.exchange"
+ami_sync_url = "https://sync.ami.exchange"
+ami_webstore_url = "https://store.ami.exchange"
+ami_updates_url = "https://updates.ami.exchange"
+ami_devtools_mcp_port = 18793
+```
+
+---
+
+### 39.3 Debug Build (`args/debug.gn`)
+
+```gn
+# Inherits from release.gn, overrides:
+is_official_build = false
+is_debug = true
+symbol_level = 2              # Full debug symbols
+use_thin_lto = false          # LTO disabled for faster incremental builds
+chrome_pgo_phase = 0          # No PGO in debug
+is_component_build = true     # Component build for faster incremental builds
+dcheck_always_on = true
+
+# Point to local dev servers
+ami_exchange_api_url = "http://localhost:3000"
+ami_sync_url = "http://localhost:3001"
+ami_devtools_mcp_port = 18793
+```
+
+---
+
+### 39.4 Patch Management
+
+As Chromium is updated (every 4–6 weeks for a new major version), patches must be rebased:
+
+```bash
+# Update Chromium to a new version
+scripts/update_chromium.sh 147.0.7900.0
+
+# This script:
+# 1. Pulls the new Chromium tag in the submodule
+# 2. Attempts to apply patches in order (scripts/apply_patches.sh)
+# 3. Reports conflicts
+
+# For each conflicting patch:
+cd chromium/
+git apply --reject ../patches/0005-ami-webui-takeover.patch
+# Fix .rej files manually
+git add .
+../scripts/generate_patch.sh 0005-ami-webui-takeover.patch
+```
+
+**Automated patch conflict detection:**
+- CI runs `apply_patches.sh` against the `main` Chromium branch daily
+- If any patch fails, a GitHub issue is automatically created: "Patch conflict: 0005-ami-webui-takeover.patch needs rebase for Chromium XXXX"
+
+---
+
+### 39.5 Build Script (`scripts/build.sh`)
+
+```bash
+#!/bin/bash
+set -e
+
+CHANNEL="${1:-stable}"
+ARCH="${2:-x64}"
+
+echo "=== AMI Browser Build ==="
+echo "Channel: $CHANNEL  Arch: $ARCH"
+
+# 1. Apply patches
+echo "Applying patches..."
+cd chromium
+git checkout .
+cd ..
+bash scripts/apply_patches.sh
+
+# 2. Copy AMI source files
+echo "Syncing ami_src/..."
+rsync -a ami_src/ chromium/
+
+# 3. Set up GN
+cd chromium
+gn gen out/Release --args="$(cat ../args/release.gn) target_cpu=\"$ARCH\""
+
+# 4. Build
+echo "Building... (this will take a while)"
+autoninja -C out/Release chrome chrome_sandbox
+
+# 5. Package
+echo "Packaging..."
+bash ../scripts/package.sh "$CHANNEL" "$ARCH" out/Release
+
+echo "=== Build complete ==="
+```
+
+---
+
+### 39.6 CI/CD Pipeline
+
+**GitHub Actions workflows:**
+```
+.github/workflows/
+├── ci.yml           — PR checks: patch apply, build (debug), unit tests
+├── nightly.yml      — Nightly: full release build, package, publish to nightly repo
+├── release.yml      — Manual trigger: release build, sign, publish to stable/beta repo
+└── patch-check.yml  — Daily: check patches against upstream Chromium main
+```
+
+**Build machines:** 2× 96-core `c3-highmem-192` (GCP) for PGO training + release builds. Estimated build time with Goma: ~45 minutes for a full release build.
+
+---
+
+## 40. Privacy & Telemetry Policy
+
+> This section documents exactly what data AMI Browser collects, what it sends, what it does NOT send, and where this is disclosed to users.
+
+---
+
+### 40.1 What Chrome Sends That AMI Does NOT Send
+
+| Chrome data collection | AMI status | GN flag / code change |
+|------------------------|-----------|----------------------|
+| Google UMA/UKM metrics | ❌ Disabled | `enable_reporting = false` |
+| RLZ ping (install tracking) | ❌ Disabled | `enable_rlz = false` |
+| Google Sync heartbeats | ❌ Disabled | Sync removed (§33) |
+| Safe Browsing URL ping | ❌ Disabled | `safe_browsing_mode = 1` (local lists only) |
+| Optimization hints fetch | ❌ Disabled | `enable_optimization_guide_fetching = false` |
+| Field trials (Chrome experiments) | ❌ Disabled | `fieldtrial_testing_config_path = ""` |
+| Usage statistics / crash reports to Google | ❌ Disabled | `enable_crash_reporter = false` (to Google) |
+| Translation requests to Google | ❌ Disabled | Replaced with AMI AI provider (§31.16) |
+| Spelling check requests to Google | ❌ Disabled | Local Hunspell dictionary only |
+| Search suggestions ping | ❌ Disabled | AMI search doesn't ping Google |
+| NTP content fetch from Google | ❌ Disabled | AMI NTP uses local + AMI server content |
+| WebRTC IP leak to Google STUN | ⚠️ Use AMI STUN | Replace Google STUN server URLs |
+
+---
+
+### 40.2 What AMI Browser Does Send
+
+| Data | Destination | Purpose | Can opt out? |
+|------|-------------|---------|-------------|
+| Anonymous crash reports | `crashes.ami.exchange` | Bug fixing | Yes — opt in only |
+| Update check: `{ channel, version, arch }` | `updates.ami.exchange` | Version check | No (needed for updates) — but no identifying info |
+| AMI Sync data (E2E encrypted blobs) | `sync.ami.exchange` | Cross-device sync | Yes — don't sign in |
+| AI chat messages | User's configured AI provider OR `api.ami.exchange/proxy` | AI responses | Yes — use local Ollama |
+| AMI Rewards events | `api.ami.exchange/rewards` | Reward balance | Yes — disable rewards |
+| Extension install events | `store.ami.exchange` | Store analytics (anonymous) | Yes — offline install |
+
+---
+
+### 40.3 Crash Reporting
+
+AMI uses `crashpad` (same as Chromium) but routes to AMI's own Sentry instance:
+
+**Collection (opt-in only, default OFF):**
+- Crashes captured by `chrome_crashpad_handler`
+- Minidump + stack trace sent to `https://crashes.ami.exchange/api/minidump/`
+- **Personally identifying information stripped before upload:** URLs stripped from stack frames, form values not included, history not included
+- User can review pending crash reports before sending: `chrome://crashes` (§31.9)
+
+**User-visible dialog (on crash):**
+```
+╭──────────────────────────────────────────────────────╮
+│ AMI Browser crashed                                   │
+│                                                       │
+│ We're sorry — something went wrong.                  │
+│                                                       │
+│ ○ Send crash report to AMI (recommended)             │
+│   This helps us fix the issue. No personal data.    │
+│ ○ Don't send                                         │
+│                                                       │
+│ [Restart AMI Browser]                                 │
+╰──────────────────────────────────────────────────────╯
+```
+
+---
+
+### 40.4 Privacy Policy Disclosure
+
+**In-browser disclosure locations:**
+1. `chrome://settings/ami/privacy` — comprehensive table of all data collected (same as §40.2 above)
+2. First-run welcome page (§31.14) — brief summary of privacy practices
+3. `chrome://settings/ami/about` — link to full privacy policy at `https://ami.exchange/privacy`
+
+**The AMI Privacy Promise (shown on settings page):**
+> AMI Browser does not send your browsing history, search queries, or personal data to any third party — including AMI Exchange. Your data stays on your device or in your own encrypted AMI Sync vault. AMI earns revenue through AMI Rewards (opt-in) and premium AI usage, not by selling your data.
+
+---
+
+## 41. Accessibility Enhancements
+
+> AMI Browser aims to exceed WCAG 2.1 AA compliance across all its custom UI. This section documents AMI-specific accessibility work beyond what Chromium provides.
+
+---
+
+### 41.1 Screen Reader Support
+
+Chromium has reasonable screen reader support (AT-SPI2 on Linux). AMI's custom UI elements must provide proper ARIA:
+
+**AMI Chat Sidebar:**
+- Chat messages: `role="log"` on the message container, `aria-live="polite"` for new messages
+- Each message: `role="article"`, `aria-label="AMI: [message preview]"` or `aria-label="You: [message preview]"`
+- Input: `aria-label="Message AMI"`, `aria-multiline="true"`
+- Streaming responses: `aria-live="polite"` updates as text streams in
+
+**AMI NTP:**
+- Search box: `aria-label="Search the web with AMI"`
+- Shortcut tiles: `role="link"`, `aria-label="[site name]"`
+- AI suggestion cards: `role="article"`, `aria-label="[suggestion title]"`
+
+**Mission Control:**
+- Automation task list: `role="list"`, each task: `role="listitem"`, progress: `aria-valuenow`, `aria-valuemin`, `aria-valuemax`
+- Approval prompts: `role="alertdialog"`, focus trapped inside until resolved
+
+**AMI WebStore:**
+- Extension cards: `role="article"`, `aria-label="[Extension name], [star rating], [install count]"`
+- "Install" button: `aria-label="Install [Extension name]"`
+
+---
+
+### 41.2 Keyboard Navigation
+
+All AMI custom UI elements must be fully keyboard navigable:
+
+| UI element | Keyboard behavior |
+|-----------|-------------------|
+| AMI Chat sidebar | `Tab` moves between input and action buttons; `Enter` sends; `Esc` closes |
+| AMI NTP shortcuts | Arrow keys navigate tiles; `Enter` opens; `Delete` removes |
+| Omnibox AMI suggestions | `Tab` accepts AI suggestion; `Enter` searches |
+| Permission bubbles | `Enter` = Allow; `Esc` = Block; Tab between buttons |
+| AMI Shield toggle (toolbar) | `Space` toggles; `Enter` opens full Shield panel |
+| Mission Control | Full keyboard navigation: `j`/`k` move between tasks, `Enter` opens, `a` approves |
+| Sidebar tabs | `Ctrl+]` / `Ctrl+[` cycle through sidebar panel tabs |
+
+**Files:**
+- All AMI WebUI TypeScript files — ensure `tabindex`, `keydown` handlers
+- New: `chrome/browser/resources/ami/a11y/keyboard_nav.ts` — shared keyboard nav utilities
+
+---
+
+### 41.3 High Contrast & Forced Colors Mode
+
+When the OS is in high contrast mode (`prefers-contrast: more` or Windows Forced Colors):
+
+**AMI CSS adaptation:**
+```css
+@media (forced-colors: active) {
+  :root {
+    --ami-bg: Canvas;
+    --ami-surface: Canvas;
+    --ami-card: Canvas;
+    --ami-accent: Highlight;
+    --ami-text: CanvasText;
+    --ami-border: ButtonBorder;
+  }
+  
+  .ami-card {
+    border: 1px solid ButtonBorder;
+    background: Canvas;
+  }
+  
+  .ami-button-primary {
+    background: Highlight;
+    color: HighlightText;
+    border: 1px solid ButtonBorder;
+  }
+}
+```
+
+All AMI SVG icons must use `currentColor` for strokes/fills so they respond to forced colors.
+
+---
+
+### 41.4 Font Scaling & Zoom
+
+AMI's UI must remain usable at browser zoom levels from 75% to 200%:
+
+- All layout uses `rem`/`em` units (not `px`) for text-containing elements
+- Card grids use CSS Grid with `auto-fill` — at large zoom levels, cards wrap to fewer columns
+- The AMI Chat sidebar has a minimum width of `280px` and a maximum of `600px` — resizable by dragging
+- The sidebar remembers its width per profile
+
+---
+
+### 41.5 Motion Reduction
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  /* Disable all AMI animations */
+  .ami-card { transition: none; }
+  .ami-slide-in { animation: none; }
+  .ami-spinner { animation: none; }
+  /* Replace spinner with a static "Loading..." text */
+  .ami-spinner::after { content: "Loading…"; animation: none; }
+}
+```
+
+---
+
+## 42. iOS / Desktop Companion Integration
+
+> AMI Browser iOS app (already built) connects to AMI Browser V3 on desktop for seamless cross-device workflows. This section documents the integration points.
+
+---
+
+### 42.1 Shared AMI Sync (§33)
+
+The primary integration: bookmarks, history, open tabs, and AMI Vault passwords sync between iOS and desktop via AMI Sync (§33).
+
+**iOS → Desktop:**
+- Open tabs from iPhone appear in the "Other Devices" section of the desktop tab search panel
+- Bookmarks added on iPhone appear on desktop within seconds (push notification via WebSocket or polling)
+- Copied URLs on iPhone (via "Send to desktop" Share Sheet action) open in a new tab on desktop (push via AMI server)
+
+**Desktop → iOS:**
+- "Send to phone" button in the AMI desktop omnibox: sends the current URL to the iOS app (appears as a notification)
+- Shared clipboard: text copied in AMI Chat on desktop available in AMI iOS app (opt-in)
+
+---
+
+### 42.2 QR Code Pairing
+
+To connect a new device to AMI Sync without typing passwords:
+
+```
+Desktop: Settings → AMI Sync → "Add device"
+  → Shows a QR code
+
+iOS: AMI Browser iOS → Settings → Sync → "Pair new device"
+  → Scans QR code → devices linked
+```
+
+**Protocol:** The QR code encodes a short-lived (60s TTL) pairing token. The desktop polls `api.ami.exchange/pair/check?token=xxx`. The iOS app POSTs `api.ami.exchange/pair/confirm?token=xxx` with its device ID. Once confirmed, both devices get each other's device ID and can sync.
+
+---
+
+### 42.3 AMI Handoff
+
+**Desktop → iOS:**
+- Any automation running on desktop can be configured to "notify on completion" — sends a push notification to paired iOS devices with the result
+
+**iOS → Desktop automation:**
+- The iOS app's "Ask AMI" (Siri shortcut) can trigger desktop automations remotely:
+  - "Hey Siri, ask AMI to order more coffee" → iOS app sends task to desktop → desktop runs the automation
+  - Works only when desktop is running (via the system tray background mode, §32.7)
+- Trigger endpoint: `ami://automation/trigger?task=...` handled by the AMI browser deep link handler
+
+---
+
+### 42.4 Continuity Camera (AMI Vision)
+
+When a user on desktop wants to analyze an image via AMI's vision AI:
+- Right-click on any image on desktop → "Ask AMI about this image" → sends image to AMI Chat
+- On iOS: the AMI app can use the phone camera and send the photo to the desktop AMI Chat session in real time (via AMI Sync photo relay)
+- Practical use case: "Point your phone at this diagram and ask AMI to explain it" from the desktop chat
+
+---
+
+### 42.5 Shared AMI Vault
+
+AMI Vault passwords (§31.6) are shared between iOS and desktop through AMI Sync with E2E encryption. Specific integration:
+- iOS AutoFill uses the AMI Vault credentials (via iOS Password Manager API / `ASCredentialIdentityStore`)
+- Desktop AutoFill uses the same Vault
+- Changes (new passwords, edits) sync in under 5 seconds
+
+---
+
+## 43. Testing Strategy
+
+> How AMI Browser is tested to ensure quality across its Chromium base, AMI features, and UI customizations.
+
+---
+
+### 43.1 Test Layers
+
+| Layer | Framework | What it tests | Run frequency |
+|-------|-----------|--------------|---------------|
+| C++ unit tests | GTest | AMI C++ components (sync bridge, Shield, automation security) | Every commit |
+| Browser tests | `browser_tests` target | Integration: WebUI pages, settings, permissions | Every PR |
+| Interactive UI tests | `interactive_ui_tests` | Real browser window, actual user interactions | Every PR |
+| Web platform tests (WPT) | WPT harness | Web standards compliance | Nightly |
+| Visual regression | Playwright + screenshot diffing | AMI WebUI appearance | Every PR |
+| Performance benchmarks | Telemetry / Catapult | Startup time, memory, rendering | Nightly |
+| End-to-end (E2E) | Playwright | Full user flows (install extension, sync, automation) | Nightly |
+| Security fuzzing | LibFuzzer / AFL++ | Parser, networking, WebUI input | Continuous |
+
+---
+
+### 43.2 "Not Chrome" Test Suite (Automated)
+
+The 24-row "Not Chrome" test table in §31.13 is encoded as an automated test suite:
+
+```typescript
+// chrome/test/ami/not_chrome_test.ts
+describe('AMI Browser — Not Chrome', () => {
+  it('NTP does not contain Google branding', async () => {
+    await page.goto('chrome://newtab');
+    expect(await page.textContent('body')).not.toContain('Google');
+    expect(await page.textContent('body')).toContain('AMI');
+  });
+
+  it('Settings page shows AMI branding', async () => {
+    await page.goto('chrome://settings');
+    expect(await page.title()).toContain('AMI');
+    expect(await page.textContent('h1')).not.toContain('Chrome');
+  });
+
+  it('Omnibox default search is not Google', async () => {
+    const defaultEngine = await browser.getDefaultSearchEngine();
+    expect(defaultEngine.keyword).not.toBe('google.com');
+  });
+
+  it('No Google API requests on startup', async () => {
+    const googleRequests = networkLog.filter(r => 
+      r.url.includes('google.com') || r.url.includes('googleapis.com')
+    );
+    expect(googleRequests).toHaveLength(0);
+  });
+  
+  // ... 20 more tests
+});
+```
+
+---
+
+### 43.3 Visual Regression Tests
+
+Every AMI WebUI page has a baseline screenshot. PRs that change WebUI code trigger screenshot comparisons:
+
+```yaml
+# .github/workflows/visual-regression.yml
+- name: Run visual regression
+  run: |
+    playwright test tests/visual/
+    # Generates diff images for any changed pages
+    # Fails if pixel diff > 0.5% of screen area
+```
+
+**Pages with baseline screenshots:**
+- `chrome://newtab` — AMI NTP
+- `chrome://settings` — AMI Settings
+- `chrome://extensions` — AMI Extensions
+- `chrome://history` — AMI History
+- All AMI-branded interstitial pages
+- AMI Chat sidebar (open state, streaming state)
+- Mission Control (with active tasks)
+
+---
+
+### 43.4 Privacy Audit Tests
+
+Automated network request auditing to verify no Google requests:
+
+```typescript
+// Tests that run on browser startup and record all network requests
+// for 30 seconds, then verify no requests to Google domains:
+const BLOCKED_DOMAINS = [
+  'google.com', 'googleapis.com', 'googleusercontent.com',
+  'gstatic.com', 'googlesyndication.com', 'google-analytics.com',
+  'googletagmanager.com', 'chrome.google.com', 'update.googleapis.com',
+  'safebrowsing.googleapis.com', 'clients1.google.com', 
+  'clients2.google.com', 'accounts.google.com',
+];
+
+it('No requests to Google domains on cold start', async () => {
+  const requests = await collectNetworkRequests(30_000);
+  const googleRequests = requests.filter(r => 
+    BLOCKED_DOMAINS.some(d => r.url.includes(d))
+  );
+  expect(googleRequests).toEqual([]);
+});
+```
+
+---
+
+### 43.5 Automation Security Tests
+
+Tests that verify the OpenClaw automation engine cannot be abused:
+
+```typescript
+it('Automation requires approval for password fields', async () => {
+  await agent.navigate('https://login.example.com');
+  const fillTask = agent.fillField('input[type=password]', 'test');
+  // Should not proceed without approval
+  await expect(fillTask).toThrow('ApprovalRequired');
+});
+
+it('MCP write tools require explicit session approval', async () => {
+  const mcp = await connectToDevToolsMCP();
+  // Read-only tools work:
+  await expect(mcp.call('screenshot')).resolves.toBeTruthy();
+  // Write tools blocked by default:
+  await expect(mcp.call('navigate', {url: 'https://example.com'}))
+    .rejects.toThrow('MCPWriteToolNotApproved');
+});
+```
+
+---
+
+## 44. V3 → V4 Roadmap
+
+> V3 (this document) establishes AMI Browser as a production-quality, privacy-first, AI-integrated Chromium browser. V4 deepens every layer with features that require more foundational infrastructure.
+
+---
+
+### 44.1 V3 Definition of Done
+
+V3 ships when ALL of the following are true:
+
+- [ ] All P0 items in §31.18 master inventory are complete
+- [ ] Build passes on Ubuntu 22.04 and Fedora 39 (clean install)
+- [ ] Cold start ≤ 1.5s on reference hardware (i5-8th gen, 8GB RAM, NVMe)
+- [ ] "Not Chrome" test suite: 24/24 passing
+- [ ] Privacy audit: zero Google domain requests on cold start
+- [ ] AMI Sync operational: bookmarks/history/tabs sync between two desktop instances
+- [ ] AMI Chat functional with at least Ollama + OpenAI providers
+- [ ] OpenClaw can complete a 5-step shopping automation on Amazon
+- [ ] AMI WebStore serves ≥20 curated extensions
+- [ ] `.deb` and AppImage packages built and installable
+- [ ] Nightly build channel publishing automatically
+
+---
+
+### 44.2 V4 Feature Targets
+
+| Feature | Description | Estimated scope |
+|---------|-------------|----------------|
+| **Native AMI Sync Engine** | Rewrite AMI Sync as a native C++ Chromium component (replaces Phase 1 extension-based sync) | ~60h |
+| **AMI Browser Android** | Port of AMI Browser to Android (Chromium/WebLayer based) — allows completing the mobile ecosystem | ~200h |
+| **AMI Vision native integration** | Native camera/screen-capture AI analysis pipeline using local vision models (LLAVA, Moondream) | ~40h |
+| **AMI Browser Extensions API** | AMI-specific extension APIs exposing `openclaw`, `ami-vault`, `ami-chat` — extensions can build on AMI's AI | ~50h |
+| **P2P Private Browsing** | Optional Tor integration for truly anonymous browsing (embedded `tor` process, `.onion` support) | ~30h |
+| **AMI Spaces V2** | Spaces become full "browser profiles" with their own extensions, stored cookies, and AMI Vault vaults | ~40h |
+| **Browser-native RAG** | Local document ingestion (PDFs, emails, notes) indexed in a local vector DB; AMI Chat can answer questions about your documents | ~80h |
+| **AMI Themes store** | Full custom browser themes (toolbar, tab strip, NTP) distributed via AMI WebStore | ~20h |
+| **Multi-agent orchestration** | Multiple OpenClaw agents running simultaneously, one agent can spawn sub-agents for parallelism | ~50h |
+| **AMI Browser for macOS** | Port to macOS (requires macOS-specific native integration work: Touch Bar, system integration) | ~120h |
+| **Enterprise Management Console** | `chrome://settings/ami/enterprise` — bulk policy management for organizations deploying AMI Browser fleet-wide | ~60h |
+| **AMI Browser SDK** | Public SDK for building integrations with AMI Browser's automation, chat, and Vault APIs | ~40h |
+
+---
+
+### 44.3 Chromium Version Update Cadence
+
+Chromium releases a new major version approximately every 4 weeks. AMI Browser tracks Chromium on this schedule:
+
+| AMI Version | Chromium Base | Target Date |
+|-------------|--------------|-------------|
+| 1.0.0 (V3 launch) | 146.x | Q2 2026 |
+| 1.1.0 | 147.x | Q3 2026 |
+| 1.2.0 | 148.x | Q3 2026 |
+| 1.3.0 | 149.x | Q4 2026 |
+| 2.0.0 (V4 launch) | 150.x | Q4 2026 |
+
+**Version number scheme:**
+- `[AMI major].[Chromium minor delta].[patch]`
+- AMI 1.0.0 = Chromium 146 baseline
+- AMI 1.1.0 = Chromium 147 (one major update ahead)
+- AMI 2.0.0 = V4 launch (new major AMI version regardless of Chromium version)
+
+---
+
+### 44.4 Open Source Strategy
+
+AMI Browser V3 is developed as source-available (patches visible, binary distributed). The plan for V4:
+
+- **Open source the patches** — all AMI patches on top of Chromium published on GitHub under BSD license (same as Chromium)
+- **Proprietary AMI features** — AMI Exchange server, AMI Rewards backend, and AMI WebStore curation remain proprietary
+- **Community contributions** — Accept patches for bug fixes, new locale support, and WebUI improvements
+- **Bounty program** — $500–$5000 bounties for security vulnerabilities reported responsibly to `security@ami.exchange`
+
+---
+
+### 44.5 Hardware Partnership Targets
+
+| Partner | Integration |
+|---------|------------|
+| **Framework Laptop** | AMI Browser as default browser on Framework's Linux image |
+| **Raspberry Pi** | AMI Browser ARM64 build optimized for Pi 5 (4GB model) |
+| **PINE64** | AMI Browser on PinePhone Pro — mobile Linux support path |
+| **System76** | AMI Browser pre-installed on Pop!_OS-shipped machines |

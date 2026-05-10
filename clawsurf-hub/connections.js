@@ -36,7 +36,7 @@ let activeCategory  = null;
 const AI_KINDS = new Set(['llm', 'stt', 'tts', 'image', 'embedding', 'ai', 'voice']);
 const AI_PROVIDER_IDS = new Set([
   'openai', 'anthropic', 'gemini', 'mistral', 'grok', 'deepseek',
-  'openrouter', 'huggingface', 'ollama', 'together', 'replicate',
+  'openrouter', 'huggingface', 'ollama', 'ollama-cloud', 'together', 'replicate',
   'perplexity', 'cohere', 'ai21', 'fireworks', 'groq', 'cerebras',
 ]);
 function isAIProvider(provider) {
@@ -47,17 +47,18 @@ function isAIProvider(provider) {
 
 /* ── Provider brand icons (inline SVG data URIs, same CDN as hub shortcuts) ── */
 const PROVIDER_ICONS = {
-  openai:      'https://cdn.simpleicons.org/openai',
-  anthropic:   'https://cdn.simpleicons.org/anthropic',
-  gemini:      'https://cdn.simpleicons.org/googlegemini',
+  openai:      'https://cdn.simpleicons.org/openai/412991',
+  anthropic:   'https://cdn.simpleicons.org/anthropic/D97757',
+  gemini:      'https://cdn.simpleicons.org/googlegemini/4285F4',
   mistral:     'https://cdn.simpleicons.org/mistralai/F7931E',
-  grok:        'https://cdn.simpleicons.org/x',
+  grok:        'https://cdn.simpleicons.org/x/1DA1F2',
   deepseek:    "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%234D6BFE%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ED%3C/text%3E%3C/svg%3E",
   openrouter:  'https://cdn.simpleicons.org/openrouter/6C3AED',
-  huggingface: 'https://cdn.simpleicons.org/huggingface',
-  ollama:      'https://cdn.simpleicons.org/ollama',
+  huggingface: 'https://cdn.simpleicons.org/huggingface/FF9A00',
+  ollama:      'https://cdn.simpleicons.org/ollama/333333',
+  'ollama-cloud': 'https://cdn.simpleicons.org/ollama/6C3AED',
   together:    "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%230FA37F%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ET%3C/text%3E%3C/svg%3E",
-  replicate:   'https://cdn.simpleicons.org/replicate/262626',
+  replicate:   'https://cdn.simpleicons.org/replicate/393BCC',
   perplexity:  'https://cdn.simpleicons.org/perplexity/20808D',
   cohere:      "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%2339594D%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3EC%3C/text%3E%3C/svg%3E",
   ai21:        "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23FF6F61%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2734%27 fill=%27white%27%3EA21%3C/text%3E%3C/svg%3E",
@@ -66,34 +67,34 @@ const PROVIDER_ICONS = {
   cerebras:    "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%231E40AF%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3EC%3C/text%3E%3C/svg%3E",
   runpod:      "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%235C2D91%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ER%3C/text%3E%3C/svg%3E",
   lmstudio:    "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%2310B981%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2734%27 fill=%27white%27%3ELM%3C/text%3E%3C/svg%3E",
-  elevenlabs:  'https://cdn.simpleicons.org/elevenlabs',
+  elevenlabs:  'https://cdn.simpleicons.org/elevenlabs/FF6B35',
   stability:   "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%237C3AED%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3ES%3C/text%3E%3C/svg%3E",
   midjourney:  "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23000%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2734%27 fill=%27white%27%3EMJ%3C/text%3E%3C/svg%3E",
   whisper:     'https://cdn.simpleicons.org/openai',
   deepgram:    'https://cdn.simpleicons.org/deepgram/13EF93',
   assemblyai:  "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%233B82F6%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2734%27 fill=%27white%27%3EAi%3C/text%3E%3C/svg%3E",
   pinecone:    "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23000%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2740%27 fill=%27white%27%3EP%3C/text%3E%3C/svg%3E",
-  telegram:    'https://cdn.simpleicons.org/telegram',
-  discord:     'https://cdn.simpleicons.org/discord',
-  whatsapp:    'https://cdn.simpleicons.org/whatsapp',
-  slack:       'https://cdn.simpleicons.org/slack',
-  github:      'https://cdn.simpleicons.org/github',
-  zapier:      'https://cdn.simpleicons.org/zapier',
+  telegram:    'https://cdn.simpleicons.org/telegram/26A5E4',
+  discord:     'https://cdn.simpleicons.org/discord/5865F2',
+  whatsapp:    'https://cdn.simpleicons.org/whatsapp/25D366',
+  slack:       'https://cdn.simpleicons.org/slack/4A154B',
+  github:      'https://cdn.simpleicons.org/github/181717',
+  zapier:      'https://cdn.simpleicons.org/zapier/FF4A00',
   make:        'https://cdn.simpleicons.org/make/6D00CC',
-  notion:      'https://cdn.simpleicons.org/notion',
-  airtable:    'https://cdn.simpleicons.org/airtable',
-  supabase:    'https://cdn.simpleicons.org/supabase',
-  firebase:    'https://cdn.simpleicons.org/firebase',
-  mongodb:     'https://cdn.simpleicons.org/mongodb',
-  redis:       'https://cdn.simpleicons.org/redis',
-  postgresql:  'https://cdn.simpleicons.org/postgresql',
-  mysql:       'https://cdn.simpleicons.org/mysql',
+  notion:      'https://cdn.simpleicons.org/notion/000000',
+  airtable:    'https://cdn.simpleicons.org/airtable/18BFFF',
+  supabase:    'https://cdn.simpleicons.org/supabase/3ECF8E',
+  firebase:    'https://cdn.simpleicons.org/firebase/FFCA28',
+  mongodb:     'https://cdn.simpleicons.org/mongodb/47A248',
+  redis:       'https://cdn.simpleicons.org/redis/FF4438',
+  postgresql:  'https://cdn.simpleicons.org/postgresql/4169E1',
+  mysql:       'https://cdn.simpleicons.org/mysql/4479A1',
   aws:         "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%23FF9900%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2732%27 fill=%27white%27%3EAWS%3C/text%3E%3C/svg%3E",
-  gcp:         'https://cdn.simpleicons.org/googlecloud',
+  gcp:         'https://cdn.simpleicons.org/googlecloud/4285F4',
   azure:       "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2720%27 fill=%27%230078D4%27/%3E%3Ctext x=%2750%27 y=%2766%27 text-anchor=%27middle%27 font-family=%27Arial,sans-serif%27 font-weight=%27bold%27 font-size=%2734%27 fill=%27white%27%3EAz%3C/text%3E%3C/svg%3E",
-  stripe:      'https://cdn.simpleicons.org/stripe',
-  twilio:      'https://cdn.simpleicons.org/twilio',
-  sendgrid:    'https://cdn.simpleicons.org/twilio',
+  stripe:      'https://cdn.simpleicons.org/stripe/635BFF',
+  twilio:      'https://cdn.simpleicons.org/twilio/F22F46',
+  sendgrid:    'https://cdn.simpleicons.org/sendgrid/1A82E2',
 };
 
 function getProviderIcon(id) {
@@ -156,10 +157,12 @@ function renderProviderGrid() {
   providerCountEl.textContent = `(${filtered.length} of ${connectionTypes.length})`;
 
   gridEl.innerHTML = filtered.map(provider => `
-    <button class="card" data-provider="${escapeHtml(provider.id)}" style="text-align:left;cursor:pointer;padding:14px;">
+    <button class="card provider-card" data-provider="${escapeHtml(provider.id)}" style="text-align:left;cursor:pointer;padding:14px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <img src="${getProviderIcon(provider.id)}" alt="" width="32" height="32" style="border-radius:8px;flex-shrink:0;" data-fallback-label="${escapeHtml(provider.label)}">
+          <div class="provider-icon-wrap">
+            <img src="${getProviderIcon(provider.id)}" alt="" width="22" height="22" data-fallback-label="${escapeHtml(provider.label)}">
+          </div>
           <div>
             <strong>${escapeHtml(provider.label)}</strong>
             <div class="about-text">${escapeHtml(provider.category)}</div>
@@ -267,10 +270,14 @@ function bindModal() {
   });
 }
 
+/* Local providers that don't require an API key */
+const LOCAL_PROVIDERS = new Set(['ollama', 'lmstudio']);
+
 function openModal(providerId) {
   activeProvider = connectionTypes.find(p => p.id === providerId) || null;
   titleEl.textContent = activeProvider ? `New ${activeProvider.label} connection` : 'New connection';
   nameEl.value = '';
+  nameEl.placeholder = activeProvider ? `My ${activeProvider.label} connection` : 'My connection';
   secretEl.value = '';
   metaEl.value = '';
   testPassed = false;
@@ -281,6 +288,22 @@ function openModal(providerId) {
   modelSourceEl.textContent = '';
   testResultEl.className = 'test-result';
   testResultEl.textContent = '';
+
+  // Customize secret label and hint per provider
+  const secretLabelEl = document.getElementById('secret-label');
+  const secretHintEl  = document.getElementById('secret-hint');
+  if (activeProvider && LOCAL_PROVIDERS.has(activeProvider.id)) {
+    secretLabelEl.textContent = 'API Key (optional)';
+    secretEl.placeholder = 'Leave blank for local, or paste cloud API key';
+    secretHintEl.textContent = '💡 Running locally? Leave the key blank. For cloud inference paste your API key.';
+    secretHintEl.style.display = '';
+  } else {
+    secretLabelEl.textContent = 'API Key / Secret / Token';
+    secretEl.placeholder = activeProvider ? `Paste your ${activeProvider.label} API key` : 'Enter your API key or secret';
+    secretHintEl.textContent = '';
+    secretHintEl.style.display = 'none';
+  }
+
   goToStep(1);
   overlayEl.classList.remove('hidden');
   modalEl.classList.remove('hidden');
@@ -321,7 +344,8 @@ function goToStep(step) {
 
 function handleNext() {
   if (currentStep === 1) {
-    if (!nameEl.value.trim() || !secretEl.value.trim()) {
+    const isLocal = activeProvider && LOCAL_PROVIDERS.has(activeProvider.id);
+    if (!nameEl.value.trim() || (!isLocal && !secretEl.value.trim())) {
       nameEl.reportValidity();
       return;
     }

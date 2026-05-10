@@ -50,26 +50,17 @@ chrome.runtime.onStartup.addListener(() => {
 /* ── Catch new-tab creation and redirect to hub (in case chrome_url_overrides fails) ── */
 const NTP_URLS = new Set([
   'chrome://newtab/', 'chrome://newtab', 'chrome://new-tab-page/',
-  'chrome://new-tab-page', 'chrome-search://local-ntp/local-ntp.html',
-  'about:blank', ''
+  'chrome://new-tab-page', 'chrome-search://local-ntp/local-ntp.html'
 ]);
 function isNTP(url) {
   return NTP_URLS.has(url) || (url && (url.startsWith('chrome-search://') || url.startsWith('chrome://newtab')));
 }
 
-chrome.tabs.onCreated.addListener(tab => {
-  const url = tab.url || tab.pendingUrl || '';
-  if (isNTP(url)) {
-    chrome.tabs.update(tab.id, { url: chrome.runtime.getURL('hub.html') });
-  }
-});
-
-/* ── Also catch tab updates to NTP ── */
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.url && isNTP(changeInfo.url)) {
-    chrome.tabs.update(tabId, { url: chrome.runtime.getURL('hub.html') });
-  }
-});
+// NOTE:
+// We intentionally avoid runtime onCreated/onUpdated NTP hijacking.
+// It can incorrectly intercept legitimate target=_blank flows (e.g. "Open now")
+// and redirect them to hub. New-tab behavior is handled by manifest override plus
+// startup sanitization below.
 
 function sanitizeStartupTabs() {
   const hubUrl = chrome.runtime.getURL('hub.html');
@@ -149,6 +140,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       executeApiCall(msg.payload).then(result => sendResponse(result)).catch(err => sendResponse({ error: err.message }));
       return true; // async response
 
+    case 'debugger-type-in-sheet':
+    case 'spreadsheet-debugger-type':
+    case 'sheet-debugger-type':
+      getMessageTabId(sender)
+        .then(tabId => typeInSheetViaDebugger(tabId, msg.values))
+        .then(r => sendResponse(r))
+        .catch(e => sendResponse({ ok: false, error: e.message }));
+      return true; // async response
+
     case 'open-sidepanel':
       if (chrome.sidePanel) {
         chrome.sidePanel.open({ windowId: sender.tab?.windowId });
@@ -162,9 +162,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       break;
 
     default:
-      sendResponse({ ok: false, error: 'Unknown message type' });
+      sendResponse({ ok: false, error: `Unknown message type: ${String(msg?.type || 'undefined')}` });
   }
 });
+
+async function getMessageTabId(sender) {
+  if (sender && sender.tab && typeof sender.tab.id === 'number') return sender.tab.id;
+  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const tabId = tabs[0] && typeof tabs[0].id === 'number' ? tabs[0].id : null;
+  if (tabId === null) throw new Error('No active tab available for debugger typing');
+  return tabId;
+}
 
 /* ══════════════ Cron Alarms ══════════════ */
 function setupAutomationAlarm(job) {
@@ -243,6 +251,106 @@ chrome.alarms.onAlarm.addListener(alarm => {
     }
   });
 });
+
+/* ══════════════ Sheet Debugger Typing ══════════════ */
+async function typeInSheetViaDebugger(tabId, values) {
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const send = (cmd, params) => new Promise((resolve, reject) => {
+    chrome.debugger.sendCommand({ tabId }, cmd, params || {}, r => {
+      if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+      else resolve(r);
+    });
+  });
+
+  // Attach debugger (ignore "already attached" error)
+  await new Promise((resolve, reject) => {
+    chrome.debugger.attach({ tabId }, '1.3', () => {
+      const err = chrome.runtime.lastError;
+      if (err && !err.message.includes('already attached')) reject(new Error(err.message));
+      else resolve();
+    });
+  });
+
+  let filled = 0;
+  try {
+    // ── Step 1: Write all values to the clipboard inside the page context.
+    // Newline-separated → Sheets pastes into successive rows (column fill).
+    // Tab-separated within a line → successive columns in that row.
+    const clipboardText = values.map(String).join('\n');
+    const clipResult = await send('Runtime.evaluate', {
+      expression: `(async () => {
+        try {
+          await navigator.clipboard.writeText(${JSON.stringify(clipboardText)});
+          return 'ok:clipboard-api';
+        } catch (e1) {
+          // fallback: legacy execCommand (works without user-activation on most pages)
+          try {
+            const ta = document.createElement('textarea');
+            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none';
+            ta.value = ${JSON.stringify(clipboardText)};
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            return ok ? 'ok:exec-command' : 'fail:exec-command';
+          } catch(e2) {
+            return 'fail:' + e2.message;
+          }
+        }
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    const clipStatus = clipResult?.result?.value || 'unknown';
+    if (clipStatus.startsWith('fail')) {
+      throw new Error('Could not set clipboard: ' + clipStatus);
+    }
+    await sleep(100);
+
+    // ── Step 2: Find active/selected cell coordinates and click it so
+    // Sheets has keyboard focus before we paste.
+    const evalResult = await send('Runtime.evaluate', {
+      expression: `(function() {
+        const selectors = [
+          '[role="gridcell"][aria-selected="true"]',
+          '.cell-input',
+          '[class*="selected"][role="gridcell"]',
+          '[role="gridcell"]',
+        ];
+        for (const sel of selectors) {
+          const el = document.querySelector(sel);
+          if (el) {
+            const r = el.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0)
+              return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+          }
+        }
+        // Fallback: click in the upper-left grid area
+        return { x: Math.round(window.innerWidth * 0.22), y: Math.round(window.innerHeight * 0.38) };
+      })()`,
+      returnByValue: true,
+    });
+    const { x, y } = evalResult?.result?.value || { x: 250, y: 300 };
+
+    // Trusted CDP mouse click to transfer OS keyboard focus to the Sheets canvas
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1, modifiers: 0 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1, modifiers: 0 });
+    await sleep(250);
+
+    // ── Step 3: Ctrl+V — pastes the newline-separated block into the sheet.
+    // Sheets interprets each \n-terminated value as a separate row cell.
+    const ctrlV = { key: 'v', code: 'KeyV', windowsVirtualKeyCode: 86, nativeVirtualKeyCode: 86, modifiers: 2 };
+    await send('Input.dispatchKeyEvent', { ...ctrlV, type: 'keyDown' });
+    await sleep(60);
+    await send('Input.dispatchKeyEvent', { ...ctrlV, type: 'keyUp' });
+    await sleep(400); // let Sheets process the paste
+
+    filled = values.length;
+  } finally {
+    try { chrome.debugger.detach({ tabId }); } catch (_) { /* ignore */ }
+  }
+  return { ok: true, filled };
+}
 
 /* ══════════════ Screenshot ══════════════ */
 async function captureScreenshot() {

@@ -6,11 +6,19 @@
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
-BUILD_DIR="/root/chromium-build"
+BUILD_DIR="${BUILD_DIR:-/root/chromium-build}"
+DEPOT_TOOLS_DIR="${DEPOT_TOOLS_DIR:-/root/depot_tools}"
+PACKAGE_DIR="${PACKAGE_DIR:-/root/ami-browser-linux64}"
 NPROC=$(nproc)
 
 log() { echo ""; echo "══ [$(date '+%H:%M:%S')] $1 ══"; }
-export PATH="/root/depot_tools:$PATH"
+export PATH="$DEPOT_TOOLS_DIR:$PATH"
+if [[ ! -f "$DEPOT_TOOLS_DIR/python3_bin_reldir.txt" ]]; then
+  (cd "$DEPOT_TOOLS_DIR" && ./update_depot_tools >/dev/null 2>&1) || true
+fi
+if [[ ! -f "$DEPOT_TOOLS_DIR/python3_bin_reldir.txt" ]]; then
+  (cd "$DEPOT_TOOLS_DIR" && ./ensure_bootstrap >/dev/null 2>&1) || true
+fi
 
 log "AMI Browser Resume Build — $NPROC cores"
 
@@ -58,12 +66,12 @@ grep -rl '"Chromium"' chrome/browser/ --include='*.cc' --include='*.h' 2>/dev/nu
 done || true
 
 echo "  → Patching settings/help page..."
-find chrome/browser/ui/webui/settings/ \( -name "*.cc" -o -name "*.h" \) -exec grep -ql 'Chromium' {} \; -exec sed -i 's/Chromium/AMI Browser/g' {} \; 2>/dev/null || true
+find chrome/browser/ui/webui/settings/ \( -name "*.cc" -o -name "*.h" \) -exec grep -ql '"Chromium"' {} \; -exec sed -i 's/"Chromium"/"AMI Browser"/g' {} \; 2>/dev/null || true
 
 echo "  → Patching NTP / side panel..."
 find chrome/browser/ui/ chrome/browser/new_tab_page/ chrome/browser/resources/new_tab_page/ \
   \( -name "*.cc" -o -name "*.h" -o -name "*.ts" -o -name "*.html" \) 2>/dev/null | while read -r f; do
-  grep -ql 'Chromium' "$f" 2>/dev/null && sed -i 's/Chromium/AMI Browser/g' "$f" || true
+  grep -ql '"Chromium"' "$f" 2>/dev/null && sed -i 's/"Chromium"/"AMI Browser"/g' "$f" || true
 done
 
 echo "  → Patching Linux installer/desktop templates..."
@@ -80,7 +88,7 @@ find content/ \( -name "*.grd" -o -name "*.grdp" \) | while read -r f; do
 done
 
 echo "  → Patching chrome://flags..."
-find chrome/browser/ -name "about_flags*" -exec sed -i 's/Chromium/AMI Browser/g' {} \; 2>/dev/null || true
+find chrome/browser/ -name "about_flags*" -exec sed -i 's/"Chromium"/"AMI Browser"/g' {} \; 2>/dev/null || true
 
 echo "  → Patching extension system strings..."
 grep -rl '"Chromium"' extensions/ chrome/browser/extensions/ --include='*.cc' 2>/dev/null | while read -r f; do
@@ -89,12 +97,12 @@ done || true
 
 echo "  → Patching crash reporter / metrics..."
 grep -rl 'Chromium' components/crash/ chrome/browser/metrics/ --include='*.cc' 2>/dev/null | while read -r f; do
-  sed -i 's/"Chromium"/"AMI Browser"/g; s/Chromium/AMI Browser/g' "$f"
+  sed -i 's/"Chromium"/"AMI Browser"/g' "$f"
 done || true
 
 echo "  → Patching profile manager / welcome page..."
 grep -rl 'Chromium' chrome/browser/ui/views/ --include='*.cc' 2>/dev/null | while read -r f; do
-  sed -i 's/"Chromium"/"AMI Browser"/g; s/Chromium/AMI Browser/g' "$f"
+  sed -i 's/"Chromium"/"AMI Browser"/g' "$f"
 done || true
 
 echo "  → Final sweep..."
@@ -118,7 +126,8 @@ is_component_build = false
 is_chrome_branded = false
 symbol_level = 0
 blink_symbol_level = 0
-use_thin_lto = false
+use_thin_lto = true
+is_cfi = false
 chrome_pgo_phase = 0
 use_sysroot = true
 use_lld = true
@@ -127,7 +136,6 @@ treat_warnings_as_errors = false
 enable_iterator_debugging = false
 ffmpeg_branding = "Chromium"
 proprietary_codecs = false
-concurrent_links = 4
 GN
 
 gn gen "$BUILD_OUT" 2>&1 | tail -5
@@ -163,7 +171,6 @@ echo "  'AMI Browser' strings: $AMI_COUNT"
 # ═══════════════════════════════════════════════════════════════
 log "Step 8/8: Packaging"
 
-PACKAGE_DIR="/root/ami-browser-linux64"
 rm -rf "$PACKAGE_DIR"
 mkdir -p "$PACKAGE_DIR"
 
