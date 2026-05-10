@@ -9,6 +9,9 @@ set -euo pipefail
 BUILD_DIR="${BUILD_DIR:-/root/chromium-build}"
 DEPOT_TOOLS_DIR="${DEPOT_TOOLS_DIR:-/root/depot_tools}"
 PACKAGE_DIR="${PACKAGE_DIR:-/root/ami-browser-linux64}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+AMI_LOGO_SOURCE="${AMI_LOGO_SOURCE:-$REPO_ROOT/amibrowser/ami-logo.png}"
 NPROC=$(nproc)
 
 log() { echo ""; echo "══ [$(date '+%H:%M:%S')] $1 ══"; }
@@ -109,6 +112,62 @@ echo "  → Final sweep..."
 grep -rl '"Chromium"' chrome/ components/ --include='*.cc' --include='*.h' --include='*.mm' 2>/dev/null | while read -r f; do
   sed -i 's/"Chromium"/"AMI Browser"/g' "$f"
 done || true
+
+echo "  → Replacing Chromium logo assets (SVG + PNG + ICO)..."
+AMI_LOGO_SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#a855f7"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient></defs><circle cx="128" cy="128" r="120" fill="url(#g)"/><text x="128" y="160" text-anchor="middle" font-family="Arial,sans-serif" font-weight="bold" font-size="100" fill="white">AMI</text></svg>'
+AMI_LOGO_WORKDIR="/tmp/ami-logo-work"
+AMI_LOGO_BASE="$AMI_LOGO_WORKDIR/ami-logo-base.png"
+mkdir -p "$AMI_LOGO_WORKDIR"
+
+if [[ -f "$AMI_LOGO_SOURCE" ]]; then
+  cp "$AMI_LOGO_SOURCE" "$AMI_LOGO_BASE"
+elif command -v convert >/dev/null 2>&1; then
+  echo "$AMI_LOGO_SVG" > "$AMI_LOGO_WORKDIR/ami-logo.svg"
+  convert -background none "$AMI_LOGO_WORKDIR/ami-logo.svg" "$AMI_LOGO_BASE" 2>/dev/null || true
+fi
+
+replace_logo_svg() {
+  local file="$1"
+  cat > "$file" <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#a855f7"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient></defs><circle cx="128" cy="128" r="120" fill="url(#g)"/><text x="128" y="160" text-anchor="middle" font-family="Arial,sans-serif" font-weight="bold" font-size="100" fill="white">AMI</text></svg>
+SVG
+}
+
+render_logo_png() {
+  local target="$1"
+  local size="$2"
+  if [[ -f "$AMI_LOGO_BASE" ]] && command -v convert >/dev/null 2>&1; then
+    convert "$AMI_LOGO_BASE" -resize "${size}x${size}" "$target" 2>/dev/null || cp "$AMI_LOGO_BASE" "$target"
+  elif [[ -f "$AMI_LOGO_BASE" ]]; then
+    cp "$AMI_LOGO_BASE" "$target"
+  fi
+}
+
+for svg in \
+  chrome/browser/resources/images/chrome_logo.svg \
+  chrome/browser/resources/images/chrome_logo_dark.svg \
+  ui/webui/resources/images/chrome_logo.svg \
+  ui/webui/resources/images/chrome_logo_dark.svg; do
+  [[ -f "$svg" ]] && replace_logo_svg "$svg"
+done
+
+find chrome/ ui/ components/ -type f -name 'chrome_logo*.svg' 2>/dev/null | while read -r svg; do
+  replace_logo_svg "$svg"
+done
+
+find chrome/app/theme -type f \( -name 'product_logo_*.png' -o -name '*chromium*logo*.png' -o -name 'chromium*.png' \) 2>/dev/null | while read -r pngfile; do
+  size=$(basename "$pngfile" | sed -n 's/[^0-9]*\([0-9][0-9]*\).*/\1/p')
+  [[ -z "$size" ]] && size=128
+  render_logo_png "$pngfile" "$size"
+  echo "    Replaced: $pngfile"
+done
+
+if [[ -f "$AMI_LOGO_BASE" ]] && command -v convert >/dev/null 2>&1; then
+  find chrome/app/theme -type f -name '*.ico' 2>/dev/null | grep -Ei 'chrom|logo|product' | while read -r icofile; do
+    convert "$AMI_LOGO_BASE" "$icofile" 2>/dev/null || true
+    echo "    Replaced: $icofile"
+  done || true
+fi
 
 echo "  ✓ Branding complete."
 
