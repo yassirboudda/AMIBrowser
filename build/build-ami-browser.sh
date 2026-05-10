@@ -115,23 +115,13 @@ MAC_BUNDLE_ID=exchange.ami.browser
 MAC_TEAM_ID=AMI
 BRAND
 
-# ── 4b. Replace "Chromium" in ALL string resource files (.grd, .grdp) ──
-echo "  → Patching .grd/.grdp string resources..."
-find chrome/ components/ ui/ -type f \( -name "*.grd" -o -name "*.grdp" \) | while read -r f; do
-  if grep -ql 'Chromium' "$f" 2>/dev/null; then
-    sed -i \
-      -e 's/Chromium/AMI Browser/g' \
-      "$f"
-  fi
-done
-
-# ── 4c. Replace in .xtb translation files ──
-echo "  → Patching .xtb translation files..."
-find chrome/ components/ ui/ -type f -name "*.xtb" | while read -r f; do
-  if grep -ql 'Chromium' "$f" 2>/dev/null; then
-    sed -i 's/Chromium/AMI Browser/g' "$f"
-  fi
-done
+# ── 4b. Safely patch string resources without corrupting .grd/.grdp attributes ──
+echo "  → Safely patching .grd/.grdp/.xtb message text..."
+if [[ -f "$REPO_ROOT/build/safe_branding_patch.py" ]]; then
+  python3 "$REPO_ROOT/build/safe_branding_patch.py" --root "$BUILD_DIR/src" --paths chrome components ui content
+else
+  echo "  ⚠ safe_branding_patch.py not found; skipping safe message patch"
+fi
 
 # ── 4d. Chrome constants (binary name, process name) ──
 echo "  → Patching chrome_constants.cc..."
@@ -148,11 +138,8 @@ if [[ -f chrome/app/chrome_content_client.cc ]]; then
   sed -i 's/"Chromium"/"AMI Browser"/g' chrome/app/chrome_content_client.cc
 fi
 
-# ── 4f. User agent string ──
-echo "  → Patching user_agent.cc..."
-find content/ chrome/ -name "*.cc" -path "*user_agent*" | while read -r f; do
-  sed -i 's/"Chromium"/"AMIBrowser"/g; s/"chromium"/"ami-browser"/g' "$f"
-done
+# ── 4f. Keep Chrome token in UA to avoid captcha regressions ──
+echo "  → Keeping Chrome token in user_agent.cc (skip aggressive UA patch)"
 
 # ── 4g. Window title, about:version, chrome://settings ──
 echo "  → Patching browser_about_handler / version_ui..."
@@ -199,12 +186,7 @@ find chrome/app/ -name "*.gni" -o -name "*.gn" | while read -r f; do
   fi
 done
 
-# ── 4l. content_strings (the fallback product name in content shell) ──
-find content/ -name "*.grd" -o -name "*.grdp" | while read -r f; do
-  if grep -ql 'Chromium' "$f" 2>/dev/null; then
-    sed -i 's/Chromium/AMI Browser/g' "$f"
-  fi
-done
+# ── 4l. content strings are patched through safe_branding_patch.py ──
 
 # ── 4m. about_flags.cc — "Chromium experiments" ──
 echo "  → Patching chrome://flags..."

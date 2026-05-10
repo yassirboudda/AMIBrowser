@@ -1,6 +1,6 @@
 # AMI Browser V3 Preparation Tracker
 
-Last updated: 2026-05-10
+Last updated: 2026-05-10 (prep batch 2)
 
 ## Goal
 
@@ -13,12 +13,15 @@ Track what is prepared vs. missing from AMI Browser V3 requirements before the n
 3. Hub extension version has been bumped to 3.0.0.
 4. Build scripts now include broader logo replacement logic for SVG, PNG, and ICO assets.
 5. Build scripts now report logo replacement counts at build time.
+6. .grd/.grdp/.xtb message patching now uses a safe parser-based script (prevents blanket sed corruption).
+7. User-agent source patch step is intentionally skipped to preserve Chrome token and reduce captcha regressions.
+8. Foundation audit script is available and currently passes all checks.
 
 ## Phase 1 Foundation Status (from V3 plan)
 
 | Item | Requirement Source | Status | Notes |
 |---|---|---|---|
-| V2 critical bug fixes (9 items) | AMI-BROWSER-V3-BUILD-CHANGES.md section 1 | PARTIAL | Some fixes applied ad-hoc in prior iterations, no full verification matrix yet |
+| V2 critical bug fixes (9 items) | AMI-BROWSER-V3-BUILD-CHANGES.md section 1 | PARTIAL+ | Safe resource patching + UA guard now scripted; full binary/runtime verification still pending rebuild |
 | Embedded core extensions (non-removable) | section 20 | PARTIAL | Extensions are loaded, but still launcher-based, not fully force-installed component extensions |
 | Default settings and privacy hardening | section 21 | PARTIAL | Some runtime flags exist; full compile-time parity not verified |
 | Color system and logo replacements | sections 22.1 and 22.20 | PARTIAL | Build scripts upgraded; needs fresh rebuild to take effect in binary resources |
@@ -35,6 +38,7 @@ Track what is prepared vs. missing from AMI Browser V3 requirements before the n
 2. Rebuild-run checklist for logo and internal page resource replacement proof.
 3. Post-build visual smoke tests for chrome://settings, chrome://history, chrome://downloads, chrome://extensions.
 4. Force-installed core extension migration plan from launcher flags to component loader path.
+5. Add native WebUI NTP implementation kickoff branch (section 5) with minimal compile-safe scaffold.
 
 ## Build Script Preparation Completed In This Repo
 
@@ -43,8 +47,18 @@ Track what is prepared vs. missing from AMI Browser V3 requirements before the n
    - Added chrome_logo SVG replacement sweeps.
    - Added PNG and ICO logo replacement sweeps.
    - Added replacement counters for SVG, PNG, and ICO.
+   - Switched .grd/.grdp/.xtb message patching to safe parser script.
+   - Removed aggressive user_agent source rewrite step.
 2. build/resume-build.sh
    - Added same logo replacement coverage and counters as full build script.
+   - Switched .grd/.grdp/.xtb message patching to safe parser script.
+   - Removed aggressive user_agent source rewrite step.
+3. build/safe_branding_patch.py
+   - Patches only message/translation text bodies.
+   - Avoids touching XML attributes and code identifiers.
+4. build/v3-foundation-audit.sh
+   - Automated prep checks for foundation items.
+   - Current baseline: PASS=11 FAIL=0.
 
 ## Next Execution Batch Once New Build Server Is Ready
 

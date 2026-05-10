@@ -44,15 +44,12 @@ MAC_BUNDLE_ID=exchange.ami.browser
 MAC_TEAM_ID=AMI
 BRAND
 
-echo "  → Patching .grd/.grdp string resources..."
-find chrome/ components/ ui/ -type f \( -name "*.grd" -o -name "*.grdp" \) | while read -r f; do
-  grep -ql 'Chromium' "$f" 2>/dev/null && sed -i 's/Chromium/AMI Browser/g' "$f" || true
-done
-
-echo "  → Patching .xtb translation files..."
-find chrome/ components/ ui/ -type f -name "*.xtb" | while read -r f; do
-  grep -ql 'Chromium' "$f" 2>/dev/null && sed -i 's/Chromium/AMI Browser/g' "$f" || true
-done
+echo "  → Safely patching .grd/.grdp/.xtb message text..."
+if [[ -f "$REPO_ROOT/build/safe_branding_patch.py" ]]; then
+  python3 "$REPO_ROOT/build/safe_branding_patch.py" --root "$BUILD_DIR/src" --paths chrome components ui content
+else
+  echo "  ⚠ safe_branding_patch.py not found; skipping safe message patch"
+fi
 
 echo "  → Patching chrome_constants.cc..."
 [[ -f chrome/common/chrome_constants.cc ]] && sed -i -e 's/"chromium"/"ami-browser"/g' -e 's/"Chromium"/"AMI Browser"/g' chrome/common/chrome_constants.cc || true
@@ -60,8 +57,7 @@ echo "  → Patching chrome_constants.cc..."
 echo "  → Patching chrome_content_client.cc..."
 [[ -f chrome/app/chrome_content_client.cc ]] && sed -i 's/"Chromium"/"AMI Browser"/g' chrome/app/chrome_content_client.cc || true
 
-echo "  → Patching user_agent.cc..."
-find content/ chrome/ -name "*.cc" -path "*user_agent*" -exec sed -i 's/"Chromium"/"AMIBrowser"/g; s/"chromium"/"ami-browser"/g' {} \; 2>/dev/null || true
+echo "  → Keeping Chrome token in user_agent.cc (skip aggressive UA patch)"
 
 echo "  → Patching browser .cc/.h (about_handler, version_ui, etc)..."
 grep -rl '"Chromium"' chrome/browser/ --include='*.cc' --include='*.h' 2>/dev/null | while read -r f; do
@@ -85,10 +81,7 @@ done
 echo "  → Patching branding .gn/.gni..."
 find chrome/app/ \( -name "*.gni" -o -name "*.gn" \) -exec grep -ql 'Chromium' {} \; -exec sed -i 's/"Chromium"/"AMI Browser"/g' {} \; 2>/dev/null || true
 
-echo "  → Patching content/ .grd/.grdp..."
-find content/ \( -name "*.grd" -o -name "*.grdp" \) | while read -r f; do
-  grep -ql 'Chromium' "$f" 2>/dev/null && sed -i 's/Chromium/AMI Browser/g' "$f" || true
-done
+echo "  → content string resources handled by safe_branding_patch.py"
 
 echo "  → Patching chrome://flags..."
 find chrome/browser/ -name "about_flags*" -exec sed -i 's/"Chromium"/"AMI Browser"/g' {} \; 2>/dev/null || true
@@ -190,7 +183,7 @@ if [[ -f "$AMI_LOGO_BASE" ]] && command -v convert >/dev/null 2>&1; then
   done < <(find chrome/app/theme -type f -name '*.ico' 2>/dev/null | grep -Ei 'chrom|logo|product')
 fi
 
-echo "  ✓ Branding complete. SVG:$logo_svg_count PNG:$logo_png_count ICO:$logo_ico_count"
+echo "  ✓ Logo replacement complete. SVG:$logo_svg_count PNG:$logo_png_count ICO:$logo_ico_count"
 
 # ═══════════════════════════════════════════════════════════════
 #  5. CONFIGURE BUILD
