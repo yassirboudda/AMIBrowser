@@ -277,6 +277,10 @@ echo "  → Replacing Chromium logo assets (SVG + PNG + ICO)..."
 AMI_LOGO_SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#a855f7"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient></defs><circle cx="128" cy="128" r="120" fill="url(#g)"/><text x="128" y="160" text-anchor="middle" font-family="Arial,sans-serif" font-weight="bold" font-size="100" fill="white">AMI</text></svg>'
 AMI_LOGO_WORKDIR="/tmp/ami-logo-work"
 AMI_LOGO_BASE="$AMI_LOGO_WORKDIR/ami-logo-base.png"
+logo_svg_count=0
+logo_png_count=0
+logo_ico_count=0
+declare -A logo_svg_seen
 mkdir -p "$AMI_LOGO_WORKDIR"
 
 if [[ -f "$AMI_LOGO_SOURCE" ]]; then
@@ -298,9 +302,22 @@ render_logo_png() {
   local size="$2"
   if [[ -f "$AMI_LOGO_BASE" ]] && command -v convert >/dev/null 2>&1; then
     convert "$AMI_LOGO_BASE" -resize "${size}x${size}" "$target" 2>/dev/null || cp "$AMI_LOGO_BASE" "$target"
+    return 0
   elif [[ -f "$AMI_LOGO_BASE" ]]; then
     cp "$AMI_LOGO_BASE" "$target"
+    return 0
   fi
+  return 1
+}
+
+replace_logo_svg_once() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  [[ -n "${logo_svg_seen[$file]:-}" ]] && return 0
+  replace_logo_svg "$file"
+  logo_svg_seen["$file"]=1
+  logo_svg_count=$((logo_svg_count + 1))
+  echo "    Replaced SVG: $file"
 }
 
 # Replace canonical internal Chrome logo SVG files used by settings/NTP/error pages.
@@ -309,31 +326,35 @@ for svg in \
   chrome/browser/resources/images/chrome_logo_dark.svg \
   ui/webui/resources/images/chrome_logo.svg \
   ui/webui/resources/images/chrome_logo_dark.svg; do
-  [[ -f "$svg" ]] && replace_logo_svg "$svg"
+  replace_logo_svg_once "$svg"
 done
 
 # Sweep any additional chrome_logo*.svg variants in resource trees.
-find chrome/ ui/ components/ -type f -name 'chrome_logo*.svg' 2>/dev/null | while read -r svg; do
-  replace_logo_svg "$svg"
-done
+while read -r svg; do
+  replace_logo_svg_once "$svg"
+done < <(find chrome/ ui/ components/ -type f -name 'chrome_logo*.svg' 2>/dev/null)
 
 # Replace product logos and chromium logo bitmaps used in app branding surfaces.
-find chrome/app/theme -type f \( -name 'product_logo_*.png' -o -name '*chromium*logo*.png' -o -name 'chromium*.png' \) 2>/dev/null | while read -r pngfile; do
+while read -r pngfile; do
   size=$(basename "$pngfile" | sed -n 's/[^0-9]*\([0-9][0-9]*\).*/\1/p')
   [[ -z "$size" ]] && size=128
-  render_logo_png "$pngfile" "$size"
-  echo "    Replaced: $pngfile"
-done
+  if render_logo_png "$pngfile" "$size"; then
+    logo_png_count=$((logo_png_count + 1))
+    echo "    Replaced PNG: $pngfile"
+  fi
+done < <(find chrome/app/theme -type f \( -name 'product_logo_*.png' -o -name '*chromium*logo*.png' -o -name 'chromium*.png' \) 2>/dev/null)
 
 # Replace ICO app icons when ImageMagick is available.
 if [[ -f "$AMI_LOGO_BASE" ]] && command -v convert >/dev/null 2>&1; then
-  find chrome/app/theme -type f -name '*.ico' 2>/dev/null | grep -Ei 'chrom|logo|product' | while read -r icofile; do
-    convert "$AMI_LOGO_BASE" "$icofile" 2>/dev/null || true
-    echo "    Replaced: $icofile"
-  done || true
+  while read -r icofile; do
+    if convert "$AMI_LOGO_BASE" "$icofile" 2>/dev/null; then
+      logo_ico_count=$((logo_ico_count + 1))
+      echo "    Replaced ICO: $icofile"
+    fi
+  done < <(find chrome/app/theme -type f -name '*.ico' 2>/dev/null | grep -Ei 'chrom|logo|product')
 fi
 
-echo "  ✓ Logo replacement complete."
+echo "  ✓ Logo replacement complete. SVG:$logo_svg_count PNG:$logo_png_count ICO:$logo_ico_count"
 
 # ═══════════════════════════════════════════════════════════════
 #  5. CONFIGURE BUILD
